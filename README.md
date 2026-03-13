@@ -1,6 +1,6 @@
-# contagent
+# Contagent
 
-Container wrappers for agentic coding tools that sandbox execution to the current workspace directory.
+Container wrappers for agentic coding tools that sandbox execution to the selected workspace directory.
 
 Currently supported tools:
 
@@ -48,8 +48,6 @@ Workspace state is stored in `.docklaude/` inside the project directory.
 ```bash
 cd /path/to/contagent
 apptainer build applaude.sif applaude.def
-# or if rootless build fails:
-sudo apptainer build applaude.sif applaude.def
 ```
 
 #### Usage
@@ -65,7 +63,7 @@ Workspace state is stored in `.applaude/home/` inside the project directory.
 
 ### applaude-cvmfs (Apptainer, DRAC/Alliance clusters)
 
-Variant for clusters that use a CVMFS-mounted software stack (`/cvmfs/soft.computecanada.ca/`) managed by **lmod**. Python and other software come from `module load` rather than the SIF image.
+Variant for clusters that use a CVMFS-mounted software stack (`/cvmfs/soft.computecanada.ca/`) managed by **lmod**. Softwares come from `module load` rather than the SIF image.
 
 #### Build (once on a login node)
 
@@ -73,11 +71,9 @@ Variant for clusters that use a CVMFS-mounted software stack (`/cvmfs/soft.compu
 apptainer build --fakeroot applaude-cvmfs.sif /path/to/contagent/applaude-cvmfs.def
 ```
 
-Building on a compute node is not recommended (no internet access, wastes allocation).
-
 #### Module tracking
 
-`applaude-cvmfs` tracks the lmod modules loaded in your shell via `.applaude/modules` in the project directory. Load your modules before invoking the script:
+`applaude-cvmfs` keeps track of the lmod modules loaded in your shell, storing them in `.applaude/modules` in the project directory and reloading them on your next session. Load the modules you will need for the session before invoking the script:
 
 ```bash
 module load python/3.11.5 scipy-stack/2023b
