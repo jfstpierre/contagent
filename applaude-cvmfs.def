@@ -1,0 +1,16 @@
+Bootstrap: docker
+From: node:20-slim
+
+%post
+    apt-get update && apt-get install -y --no-install-recommends \
+        curl git ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+    curl -fsSL https://claude.ai/install.sh | bash
+    chmod 755 /root && chmod -R a+rX /root/.local
+    mkdir -p /workspace /cvmfs
+
+%environment
+    export PATH="/root/.local/bin:$PATH"
+
+%runscript
+    exec claude "$@"

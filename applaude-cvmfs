@@ -1,0 +1,157 @@
+#!/bin/bash
+# applaude-cvmfs - Apptainer wrapper for Claude Code (DRAC/Alliance cluster variant)
+# Provides sandboxing by limiting file access to a workspace folder.
+# Python and other software come from the CVMFS-mounted module stack,
+# not from the SIF image. Tracks loaded modules in .applaude/modules.
+
+set -e
+
+# Configuration
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+SIF_IMAGE="${SCRIPT_DIR}/applaude-cvmfs.sif"
+
+# Get absolute path of workspace (current directory)
+WORKSPACE="$(pwd)"
+APPLAUDE_DIR="${WORKSPACE}/.applaude"
+CONTAINER_HOME="${APPLAUDE_DIR}/home"
+
+# Host Claude directory (for credentials/settings)
+HOST_CLAUDE_DIR="${HOME}/.claude"
+HOST_CLAUDE_JSON="${HOME}/.claude.json"
+
+# Check if host ~/.claude exists
+if [ ! -d "${HOST_CLAUDE_DIR}" ]; then
+  echo "Error: ${HOST_CLAUDE_DIR} does not exist."
+  echo "Please run 'claude login' first to set up your Claude credentials."
+  exit 1
+fi
+
+# Check if host ~/.claude.json exists
+if [ ! -f "${HOST_CLAUDE_JSON}" ]; then
+  echo "Error: ${HOST_CLAUDE_JSON} does not exist."
+  echo "Please run 'claude login' first to set up your Claude configuration."
+  exit 1
+fi
+
+# SIF must be built manually on a login node (no auto-build on compute nodes)
+if [ ! -f "${SIF_IMAGE}" ]; then
+  echo "Error: SIF not found: ${SIF_IMAGE}"
+  echo "Build it once on a login node with:"
+  echo "  apptainer build --fakeroot '${SIF_IMAGE}' '${SCRIPT_DIR}/applaude-cvmfs.def'"
+  exit 1
+fi
+
+# Create per-workspace home directory structure
+mkdir -p "${CONTAINER_HOME}/.claude"
+
+# Copy credentials from host if they don't exist in container's .applaude
+# This ensures host files remain untouched while container has its own copies
+if [ ! -f "${CONTAINER_HOME}/.claude/.credentials.json" ]; then
+  cp "${HOST_CLAUDE_DIR}/.credentials.json" "${CONTAINER_HOME}/.claude/.credentials.json"
+  chmod 600 "${CONTAINER_HOME}/.claude/.credentials.json"
+fi
+
+# Copy .claude.json config file if it doesn't exist
+if [ ! -f "${CONTAINER_HOME}/.claude.json" ]; then
+  cp "${HOST_CLAUDE_JSON}" "${CONTAINER_HOME}/.claude.json"
+  chmod 600 "${CONTAINER_HOME}/.claude.json"
+fi
+
+# Ensure lmod's module function is available
+ensure_module() {
+  if ! type module >/dev/null 2>&1; then
+    for lmod_init in \
+      /cvmfs/soft.computecanada.ca/nix/var/nix/profiles/16.09/lmod/lmod/init/bash \
+      /etc/profile.d/lmod.sh \
+      /usr/share/lmod/lmod/init/bash; do
+      [ -f "$lmod_init" ] && { source "$lmod_init"; return 0; }
+    done
+    return 1
+  fi
+}
+
+# Load modules listed in a file
+load_modules_from_file() {
+  local file="$1"
+  if ! ensure_module; then
+    echo "Warning: 'module' unavailable — skipping module loading."
+    echo "Ensure lmod is initialized before running applaude-cvmfs."
+    return
+  fi
+  module purge
+  while IFS= read -r mod || [ -n "$mod" ]; do
+    [[ -z "$mod" || "$mod" =~ ^[[:space:]]*# ]] && continue
+    echo "Loading module: $mod"
+    module load "$mod"
+  done < "$file"
+}
+
+# Get currently loaded modules (one per line, in lmod order)
+get_loaded_modules() {
+  echo "${LOADEDMODULES:-}" | tr ':' '\n' | grep -v '^$'
+}
+
+# Handle .applaude/modules tracking
+MODULES_FILE="${APPLAUDE_DIR}/modules"
+
+CURRENT_MODULES="$(get_loaded_modules)"
+
+if [ ! -f "${MODULES_FILE}" ]; then
+  # First execution: save currently loaded modules
+  echo "${CURRENT_MODULES}" > "${MODULES_FILE}"
+  echo "Saved loaded modules to ${MODULES_FILE}"
+else
+  # Compare currently loaded modules with saved ones (order-independent)
+  SAVED_MODULES="$(cat "${MODULES_FILE}")"
+  CURRENT_SORTED="$(echo "${CURRENT_MODULES}" | sort)"
+  SAVED_SORTED="$(echo "${SAVED_MODULES}" | sort)"
+
+  if [ "${CURRENT_SORTED}" != "${SAVED_SORTED}" ]; then
+    echo "Loaded modules differ from ${MODULES_FILE}:"
+    echo "  Currently loaded: $(echo "${CURRENT_MODULES}" | tr '\n' ' ')"
+    echo "  In modules file:  $(echo "${SAVED_MODULES}" | tr '\n' ' ')"
+    while true; do
+      read -r -p "(C)hange loaded modules to match file, (U)pdate file with current modules, (I)gnore? [C/U/I]: " choice
+      case "${choice}" in
+        [Cc])
+          load_modules_from_file "${MODULES_FILE}"
+          break
+          ;;
+        [Uu])
+          echo "${CURRENT_MODULES}" > "${MODULES_FILE}"
+          echo "Updated ${MODULES_FILE}"
+          break
+          ;;
+        [Ii])
+          break
+          ;;
+        *)
+          echo "Please enter C, U, or I."
+          ;;
+      esac
+    done
+  fi
+fi
+
+# Build bind args: always bind workspace; bind /cvmfs if present on host
+BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
+[ -d "/cvmfs" ] && BIND_ARGS+=("--bind" "/cvmfs:/cvmfs")
+
+# Propagate PATH with claude's install dir prepended.
+# Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so claude's
+# startup check doesn't warn about ~/.local/bin not being in PATH.
+# All other module-set env vars (LD_LIBRARY_PATH, PYTHONPATH, EBROOT*, etc.)
+# flow into the container automatically via Apptainer's default host-env inheritance.
+export APPTAINERENV_PATH="/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
+
+# Run the container with:
+# --home: override host HOME with per-workspace dir (prevents ~/.claude leak)
+# --bind: mount workspace read-write, plus /cvmfs if available
+# --workdir: start in /workspace
+# Pass through all arguments to claude
+apptainer run \
+  --home "${CONTAINER_HOME}" \
+  "${BIND_ARGS[@]}" \
+  --workdir /workspace \
+  "${SIF_IMAGE}" \
+  "$@"

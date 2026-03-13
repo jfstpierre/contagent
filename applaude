@@ -1,0 +1,77 @@
+#!/bin/bash
+# Applaude - Apptainer wrapper for Claude Code
+# Provides sandboxing by limiting file access to a workspace folder
+
+set -e
+
+# Configuration
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+SIF_IMAGE="${SCRIPT_DIR}/applaude.sif"
+
+# Get absolute path of workspace (current directory)
+WORKSPACE="$(pwd)"
+APPLAUDE_DIR="${WORKSPACE}/.applaude"
+CONTAINER_HOME="${APPLAUDE_DIR}/home"
+
+# Host Claude directory (for credentials/settings)
+HOST_CLAUDE_DIR="${HOME}/.claude"
+HOST_CLAUDE_JSON="${HOME}/.claude.json"
+
+# Check if host ~/.claude exists
+if [ ! -d "${HOST_CLAUDE_DIR}" ]; then
+    echo "Error: ${HOST_CLAUDE_DIR} does not exist."
+    echo "Please run 'claude login' first to set up your Claude credentials."
+    exit 1
+fi
+
+# Check if host ~/.claude.json exists
+if [ ! -f "${HOST_CLAUDE_JSON}" ]; then
+    echo "Error: ${HOST_CLAUDE_JSON} does not exist."
+    echo "Please run 'claude login' first to set up your Claude configuration."
+    exit 1
+fi
+
+# Create per-workspace home directory structure
+mkdir -p "${CONTAINER_HOME}/.claude"
+
+# Copy credentials from host if they don't exist in container's .applaude
+# This ensures host files remain untouched while container has its own copies
+if [ ! -f "${CONTAINER_HOME}/.claude/.credentials.json" ]; then
+    cp "${HOST_CLAUDE_DIR}/.credentials.json" "${CONTAINER_HOME}/.claude/.credentials.json"
+    chmod 600 "${CONTAINER_HOME}/.claude/.credentials.json"
+fi
+
+# Copy .claude.json config file if it doesn't exist
+if [ ! -f "${CONTAINER_HOME}/.claude.json" ]; then
+    cp "${HOST_CLAUDE_JSON}" "${CONTAINER_HOME}/.claude.json"
+    chmod 600 "${CONTAINER_HOME}/.claude.json"
+fi
+
+# Auto-build SIF if missing
+if [ ! -f "${SIF_IMAGE}" ]; then
+    echo "SIF image '${SIF_IMAGE}' not found. Building..."
+    echo "This may take several minutes on first run."
+    if ! apptainer build "${SIF_IMAGE}" "${SCRIPT_DIR}/applaude.def" 2>&1; then
+        echo ""
+        echo "Build failed. If you see permission errors, try:"
+        echo "  sudo apptainer build '${SIF_IMAGE}' '${SCRIPT_DIR}/applaude.def'"
+        exit 1
+    fi
+fi
+
+# Ensure claude's install dir is on PATH inside the container.
+# Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so claude's
+# startup check doesn't warn about ~/.local/bin not being in PATH.
+export APPTAINERENV_PATH="/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
+
+# Run the container with:
+# --home: override host HOME with per-workspace dir (prevents ~/.claude leak)
+# --bind: mount workspace read-write
+# --workdir: start in /workspace
+# Pass through all arguments to claude
+apptainer run \
+    --home "${CONTAINER_HOME}" \
+    --bind "${WORKSPACE}:/workspace" \
+    --workdir /workspace \
+    "${SIF_IMAGE}" \
+    "$@"
