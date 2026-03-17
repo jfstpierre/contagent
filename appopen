@@ -1,0 +1,95 @@
+#!/bin/bash
+# appopen - Apptainer wrapper for OpenCode agent
+# Provides sandboxing by limiting file access to a workspace folder.
+
+set -e
+
+# Configuration
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer.sif"
+
+# Get absolute path of workspace (current directory)
+WORKSPACE="$(pwd)"
+APPOPEN_DIR="${WORKSPACE}/.contagent/appopen"
+CONTAINER_HOME="${APPOPEN_DIR}/home"
+
+# Host OpenCode directories (for credentials/settings)
+HOST_OPENCODE_AUTH="${HOME}/.local/share/opencode/auth.json"
+HOST_OPENCODE_CONFIG="${HOME}/.config/opencode"
+
+# Check if host auth.json exists
+if [ ! -f "${HOST_OPENCODE_AUTH}" ]; then
+  echo "Error: ${HOST_OPENCODE_AUTH} does not exist."
+  echo "Please configure OpenCode first (e.g. run 'opencode' and set up your API keys)."
+  exit 1
+fi
+
+if [ ! -f "${SIF_IMAGE}" ]; then
+  echo "Error: SIF not found: ${SIF_IMAGE}"
+  echo "Run 'contagent build' first to build the container image."
+  exit 1
+fi
+
+# Create per-workspace home directory structure
+mkdir -p "${CONTAINER_HOME}/.local/share/opencode" \
+         "${CONTAINER_HOME}/.local/state/opencode" \
+         "${CONTAINER_HOME}/.config/opencode"
+
+# Copy credentials from host if they don't exist in container's .appopen
+# This ensures host files remain untouched while container has its own copies
+if [ ! -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" ]; then
+  cp "${HOST_OPENCODE_AUTH}" "${CONTAINER_HOME}/.local/share/opencode/auth.json"
+  chmod 600 "${CONTAINER_HOME}/.local/share/opencode/auth.json"
+fi
+
+# Copy opencode.json (settings) from host if present and not yet copied
+if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ] && \
+   [ ! -f "${CONTAINER_HOME}/.config/opencode/opencode.json" ]; then
+  cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${CONTAINER_HOME}/.config/opencode/opencode.json"
+fi
+
+# Copy model.json (recently-used model preference) from host if present and not yet copied
+# prompt-history.jsonl is intentionally left workspace-local
+HOST_OPENCODE_MODEL="${HOME}/.local/state/opencode/model.json"
+if [ -f "${HOST_OPENCODE_MODEL}" ] && \
+   [ ! -f "${CONTAINER_HOME}/.local/state/opencode/model.json" ]; then
+  cp "${HOST_OPENCODE_MODEL}" "${CONTAINER_HOME}/.local/state/opencode/model.json"
+fi
+
+# Load the Apptainer module recorded by contagent, if any
+SETTINGS_FILE="${CONTAGENT_DIR:-${HOME}/.contagent}/settings"
+if [ -f "${SETTINGS_FILE}" ]; then
+  APPTAINER_MODULE="$(grep '^APPTAINER_MODULE=' "${SETTINGS_FILE}" | cut -d= -f2-)"
+  if [ -n "${APPTAINER_MODULE:-}" ]; then
+    if ! type module >/dev/null 2>&1; then
+      for lmod_init in \
+        /cvmfs/soft.computecanada.ca/nix/var/nix/profiles/16.09/lmod/lmod/init/bash \
+        /etc/profile.d/lmod.sh \
+        /usr/share/lmod/lmod/init/bash; do
+        [ -f "$lmod_init" ] && { source "$lmod_init"; break; }
+      done
+    fi
+    if type module >/dev/null 2>&1; then
+      module load "${APPTAINER_MODULE}"
+    else
+      echo "Warning: lmod unavailable — could not load Apptainer module '${APPTAINER_MODULE}'."
+    fi
+  fi
+fi
+
+# Propagate PATH with opencode's install dir prepended.
+# Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so startup
+# checks don't warn about ~/.local/bin not being in PATH.
+export APPTAINERENV_PATH="/root/.opencode/bin:/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
+
+# Run opencode with:
+# --home: override host HOME with per-workspace dir
+# --bind: mount workspace read-write
+# --workdir: start in /workspace
+# Pass through all arguments to opencode
+apptainer exec \
+  --home "${CONTAINER_HOME}" \
+  --bind "${WORKSPACE}:/workspace" \
+  --workdir /workspace \
+  "${SIF_IMAGE}" \
+  opencode "$@"

@@ -1,0 +1,18 @@
+Bootstrap: docker
+From: python:3.14-slim
+
+%post
+    apt-get update && apt-get install -y --no-install-recommends \
+        curl git ca-certificates gnupg \
+        && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+        && apt-get install -y --no-install-recommends nodejs \
+        && rm -rf /var/lib/apt/lists/*
+    curl -fsSL https://claude.ai/install.sh | bash
+    chmod 755 /root && chmod -R a+rX /root/.local
+    mkdir -p /workspace
+
+%environment
+    export PATH="/root/.local/bin:$PATH"
+
+%runscript
+    exec claude "$@"

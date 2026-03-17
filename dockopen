@@ -1,0 +1,77 @@
+#!/bin/bash
+# dockopen - Docker wrapper for OpenCode agent
+# Provides sandboxing by limiting file access to a workspace folder.
+
+set -e
+
+# Configuration
+IMAGE_NAME="docklaude"
+CONTAINER_NAME="dockopen-$$"
+
+# Get absolute path of workspace (current directory)
+WORKSPACE="$(pwd)"
+DOCKOPEN_DIR="${WORKSPACE}/.contagent/dockopen"
+CONTAINER_HOME="${DOCKOPEN_DIR}/home"
+
+# Host OpenCode directories (for credentials/settings)
+HOST_OPENCODE_AUTH="${HOME}/.local/share/opencode/auth.json"
+HOST_OPENCODE_CONFIG="${HOME}/.config/opencode"
+
+# Check if host auth.json exists
+if [ ! -f "${HOST_OPENCODE_AUTH}" ]; then
+  echo "Error: ${HOST_OPENCODE_AUTH} does not exist."
+  echo "Please configure OpenCode first (e.g. run 'opencode' and set up your API keys)."
+  exit 1
+fi
+
+# Create per-workspace home directory structure
+mkdir -p "${CONTAINER_HOME}/.local/share/opencode" \
+         "${CONTAINER_HOME}/.local/state/opencode" \
+         "${CONTAINER_HOME}/.config/opencode"
+
+# Copy credentials from host if they don't exist in container's .dockopen
+# This ensures host files remain untouched while container has its own copies
+if [ ! -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" ]; then
+  cp "${HOST_OPENCODE_AUTH}" "${CONTAINER_HOME}/.local/share/opencode/auth.json"
+  chmod 600 "${CONTAINER_HOME}/.local/share/opencode/auth.json"
+fi
+
+# Copy opencode.json (settings) from host if present and not yet copied
+if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ] && \
+   [ ! -f "${CONTAINER_HOME}/.config/opencode/opencode.json" ]; then
+  cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${CONTAINER_HOME}/.config/opencode/opencode.json"
+fi
+
+# Copy model.json (recently-used model preference) from host if present and not yet copied
+# prompt-history.jsonl is intentionally left workspace-local
+HOST_OPENCODE_MODEL="${HOME}/.local/state/opencode/model.json"
+if [ -f "${HOST_OPENCODE_MODEL}" ] && \
+   [ ! -f "${CONTAINER_HOME}/.local/state/opencode/model.json" ]; then
+  cp "${HOST_OPENCODE_MODEL}" "${CONTAINER_HOME}/.local/state/opencode/model.json"
+fi
+
+# Ensure the image exists
+if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
+  echo "Image '${IMAGE_NAME}' not found."
+  echo "Run 'contagent build' first to build the container image."
+  exit 1
+fi
+
+# Run opencode with:
+# --entrypoint: override image default to run opencode
+# --user: run as current user so files are owned by the host user
+# -v workspace: mount workspace read-write
+# -v home: mount per-workspace state dir as container home
+# -e HOME: point HOME at the mounted state dir
+# --workdir: start in /workspace
+# Pass through all arguments to opencode
+docker run --rm -it --init \
+  --name "${CONTAINER_NAME}" \
+  --entrypoint opencode \
+  --user "$(id -u):$(id -g)" \
+  -v "${WORKSPACE}:/workspace" \
+  -v "${CONTAINER_HOME}:/home/opencode" \
+  -e HOME=/home/opencode \
+  --workdir /workspace \
+  "${IMAGE_NAME}" \
+  "$@"

@@ -1,0 +1,171 @@
+#!/bin/bash
+# appopen-cvmfs - Apptainer wrapper for OpenCode agent (DRAC/Alliance cluster variant)
+# Provides sandboxing by limiting file access to a workspace folder.
+# Python and other software come from the CVMFS-mounted module stack,
+# not from the SIF image. Tracks loaded modules in .appopen/modules.
+
+set -e
+
+# Configuration
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer-cvmfs.sif"
+
+# Get absolute path of workspace (current directory)
+WORKSPACE="$(pwd)"
+APPOPEN_DIR="${WORKSPACE}/.contagent/appopen"
+CONTAINER_HOME="${APPOPEN_DIR}/home"
+
+# Host OpenCode directories (for credentials/settings)
+HOST_OPENCODE_AUTH="${HOME}/.local/share/opencode/auth.json"
+HOST_OPENCODE_CONFIG="${HOME}/.config/opencode"
+
+# Check if host auth.json exists
+if [ ! -f "${HOST_OPENCODE_AUTH}" ]; then
+  echo "Error: ${HOST_OPENCODE_AUTH} does not exist."
+  echo "Please configure OpenCode first (e.g. run 'opencode' and set up your API keys)."
+  exit 1
+fi
+
+if [ ! -f "${SIF_IMAGE}" ]; then
+  echo "Error: SIF not found: ${SIF_IMAGE}"
+  echo "Run 'contagent' first to build the container image."
+  exit 1
+fi
+
+# Create per-workspace home directory structure
+mkdir -p "${CONTAINER_HOME}/.local/share/opencode" \
+         "${CONTAINER_HOME}/.local/state/opencode" \
+         "${CONTAINER_HOME}/.config/opencode"
+
+# Copy credentials from host if they don't exist in container's .appopen
+# This ensures host files remain untouched while container has its own copies
+if [ ! -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" ]; then
+  cp "${HOST_OPENCODE_AUTH}" "${CONTAINER_HOME}/.local/share/opencode/auth.json"
+  chmod 600 "${CONTAINER_HOME}/.local/share/opencode/auth.json"
+fi
+
+# Copy opencode.json (settings) from host if present and not yet copied
+if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ] && \
+   [ ! -f "${CONTAINER_HOME}/.config/opencode/opencode.json" ]; then
+  cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${CONTAINER_HOME}/.config/opencode/opencode.json"
+fi
+
+# Copy model.json (recently-used model preference) from host if present and not yet copied
+# prompt-history.jsonl is intentionally left workspace-local
+HOST_OPENCODE_MODEL="${HOME}/.local/state/opencode/model.json"
+if [ -f "${HOST_OPENCODE_MODEL}" ] && \
+   [ ! -f "${CONTAINER_HOME}/.local/state/opencode/model.json" ]; then
+  cp "${HOST_OPENCODE_MODEL}" "${CONTAINER_HOME}/.local/state/opencode/model.json"
+fi
+
+# Ensure lmod's module function is available
+ensure_module() {
+  if ! type module >/dev/null 2>&1; then
+    for lmod_init in \
+      /cvmfs/soft.computecanada.ca/nix/var/nix/profiles/16.09/lmod/lmod/init/bash \
+      /etc/profile.d/lmod.sh \
+      /usr/share/lmod/lmod/init/bash; do
+      [ -f "$lmod_init" ] && { source "$lmod_init"; return 0; }
+    done
+    return 1
+  fi
+}
+
+# Load modules listed in a file
+load_modules_from_file() {
+  local file="$1"
+  if ! ensure_module; then
+    echo "Warning: 'module' unavailable — skipping module loading."
+    echo "Ensure lmod is initialized before running appopen-cvmfs."
+    return
+  fi
+  module purge
+  while IFS= read -r mod || [ -n "$mod" ]; do
+    [[ -z "$mod" || "$mod" =~ ^[[:space:]]*# ]] && continue
+    echo "Loading module: $mod"
+    module load "$mod"
+  done < "$file"
+}
+
+# Get currently loaded modules (one per line, in lmod order)
+get_loaded_modules() {
+  echo "${LOADEDMODULES:-}" | tr ':' '\n' | grep -v '^$'
+}
+
+# Handle .appopen/modules tracking
+MODULES_FILE="${APPOPEN_DIR}/modules"
+
+CURRENT_MODULES="$(get_loaded_modules)"
+
+if [ ! -f "${MODULES_FILE}" ]; then
+  # First execution: save currently loaded modules
+  echo "${CURRENT_MODULES}" > "${MODULES_FILE}"
+  echo "Saved loaded modules to ${MODULES_FILE}"
+else
+  # Compare currently loaded modules with saved ones (order-independent)
+  SAVED_MODULES="$(cat "${MODULES_FILE}")"
+  CURRENT_SORTED="$(echo "${CURRENT_MODULES}" | sort)"
+  SAVED_SORTED="$(echo "${SAVED_MODULES}" | sort)"
+
+  if [ "${CURRENT_SORTED}" != "${SAVED_SORTED}" ]; then
+    echo "Loaded modules differ from ${MODULES_FILE}:"
+    echo "  Currently loaded: $(echo "${CURRENT_MODULES}" | tr '\n' ' ')"
+    echo "  In modules file:  $(echo "${SAVED_MODULES}" | tr '\n' ' ')"
+    while true; do
+      read -r -p "(C)hange loaded modules to match file, (U)pdate file with current modules, (I)gnore? [C/U/I]: " choice
+      case "${choice}" in
+        [Cc])
+          load_modules_from_file "${MODULES_FILE}"
+          break
+          ;;
+        [Uu])
+          echo "${CURRENT_MODULES}" > "${MODULES_FILE}"
+          echo "Updated ${MODULES_FILE}"
+          break
+          ;;
+        [Ii])
+          break
+          ;;
+        *)
+          echo "Please enter C, U, or I."
+          ;;
+      esac
+    done
+  fi
+fi
+
+# Load the Apptainer module recorded by contagent, if any
+SETTINGS_FILE="${CONTAGENT_DIR:-${HOME}/.contagent}/settings"
+if [ -f "${SETTINGS_FILE}" ]; then
+  APPTAINER_MODULE="$(grep '^APPTAINER_MODULE=' "${SETTINGS_FILE}" | cut -d= -f2-)"
+  if [ -n "${APPTAINER_MODULE:-}" ]; then
+    if ensure_module; then
+      module load "${APPTAINER_MODULE}"
+    else
+      echo "Warning: lmod unavailable — could not load Apptainer module '${APPTAINER_MODULE}'."
+    fi
+  fi
+fi
+
+# Build bind args: always bind workspace; bind /cvmfs if present on host
+BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
+[ -d "/cvmfs" ] && BIND_ARGS+=("--bind" "/cvmfs:/cvmfs")
+
+# Propagate PATH with opencode's install dir prepended.
+# Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so startup
+# checks don't warn about ~/.local/bin not being in PATH.
+# All other module-set env vars (LD_LIBRARY_PATH, PYTHONPATH, EBROOT*, etc.)
+# flow into the container automatically via Apptainer's default host-env inheritance.
+export APPTAINERENV_PATH="/root/.opencode/bin:/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
+
+# Run opencode with:
+# --home: override host HOME with per-workspace dir
+# --bind: mount workspace read-write, plus /cvmfs if available
+# --workdir: start in /workspace
+# Pass through all arguments to opencode
+apptainer exec \
+  --home "${CONTAINER_HOME}" \
+  "${BIND_ARGS[@]}" \
+  --workdir /workspace \
+  "${SIF_IMAGE}" \
+  opencode "$@"

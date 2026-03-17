@@ -1,0 +1,215 @@
+#!/bin/bash
+# contagent - Container wrapper for AI coding agents
+
+set -e
+
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+CONTAGENT_DIR="${HOME}/.contagent"
+SETTINGS_FILE="${CONTAGENT_DIR}/settings"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+usage() {
+  echo "Usage: contagent <command> [args...]"
+  echo ""
+  echo "Commands:"
+  echo "  build       Build or rebuild the container image"
+  echo "  claude      Run Claude Code inside the container"
+  echo "  agent       Run Cursor agent inside the container"
+  echo "  opencode    Run OpenCode inside the container"
+  echo ""
+  echo "Run 'contagent build' first to set up the container before using"
+  echo "the agent commands."
+}
+
+# Read a value from the settings file
+read_setting() {
+  grep "^${1}=" "${SETTINGS_FILE}" 2>/dev/null | cut -d= -f2-
+}
+
+# Print the current container state
+show_container_state() {
+  if [ ! -f "${SETTINGS_FILE}" ]; then
+    echo "  Container: not built"
+    return
+  fi
+  local ctype sif
+  ctype="$(read_setting CONTAINER_TYPE)"
+  echo "  Container type : ${ctype}"
+  case "${ctype}" in
+    apptainer-cvmfs)
+      sif="${CONTAGENT_DIR}/apptainer-cvmfs.sif"
+      if [ -f "${sif}" ]; then
+        echo "  SIF image      : ${sif} ($(du -sh "${sif}" 2>/dev/null | cut -f1))"
+      else
+        echo "  SIF image      : not found (settings exist but image is missing)"
+      fi
+      ;;
+    apptainer)
+      sif="${CONTAGENT_DIR}/apptainer.sif"
+      if [ -f "${sif}" ]; then
+        echo "  SIF image      : ${sif} ($(du -sh "${sif}" 2>/dev/null | cut -f1))"
+      else
+        echo "  SIF image      : not found (settings exist but image is missing)"
+      fi
+      ;;
+    docker)
+      if docker image inspect docklaude >/dev/null 2>&1; then
+        echo "  Docker image   : docklaude (present)"
+      else
+        echo "  Docker image   : docklaude (not found)"
+      fi
+      ;;
+  esac
+}
+
+# Load lmod and apptainer for Apptainer variants; sets APPTAINER_MODULE
+load_apptainer() {
+  if ! type module >/dev/null 2>&1; then
+    for lmod_init in \
+      /cvmfs/soft.computecanada.ca/nix/var/nix/profiles/16.09/lmod/lmod/init/bash \
+      /etc/profile.d/lmod.sh \
+      /usr/share/lmod/lmod/init/bash; do
+      [ -f "$lmod_init" ] && { source "$lmod_init"; break; }
+    done
+  fi
+
+  if type module >/dev/null 2>&1; then
+    echo "Loading Apptainer module..."
+    local latest
+    latest="$(module -t avail apptainer 2>&1 | grep -i '^apptainer/' | sort -V | tail -1)"
+    APPTAINER_MODULE="${latest:-apptainer}"
+    echo "  Loading ${APPTAINER_MODULE}"
+    module load "${APPTAINER_MODULE}"
+  fi
+
+  if ! command -v apptainer >/dev/null 2>&1; then
+    echo "Error: apptainer not found on PATH."
+    echo "Load the apptainer module manually and re-run contagent build."
+    exit 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+
+case "${1:-}" in
+  # --- agent subcommands ---------------------------------------------------
+  claude|agent|opencode)
+    if [ ! -f "${SETTINGS_FILE}" ]; then
+      echo "Error: no settings found at ${SETTINGS_FILE}."
+      echo "Run 'contagent build' first to set up your container."
+      exit 1
+    fi
+    CONTAINER_TYPE="$(read_setting CONTAINER_TYPE)"
+    case "${1}" in
+      agent)
+        case "${CONTAINER_TYPE}" in
+          apptainer-cvmfs) SCRIPT="appsur-cvmfs" ;;
+          apptainer)       SCRIPT="appsur" ;;
+          docker)          SCRIPT="docksur" ;;
+        esac
+        ;;
+      opencode)
+        case "${CONTAINER_TYPE}" in
+          apptainer-cvmfs) SCRIPT="appopen-cvmfs" ;;
+          apptainer)       SCRIPT="appopen" ;;
+          docker)          SCRIPT="dockopen" ;;
+        esac
+        ;;
+      claude)
+        case "${CONTAINER_TYPE}" in
+          apptainer-cvmfs) SCRIPT="applaude-cvmfs" ;;
+          apptainer)       SCRIPT="applaude" ;;
+          docker)          SCRIPT="docklaude" ;;
+        esac
+        ;;
+    esac
+    exec "${SCRIPT_DIR}/${SCRIPT}" "${@:2}"
+    ;;
+
+  # --- build ---------------------------------------------------------------
+  build)
+    mkdir -p "${CONTAGENT_DIR}"
+
+    echo "contagent build"
+    echo "==============="
+    echo ""
+    echo "Current state:"
+    show_container_state
+    echo ""
+    echo "Select the container variant to build:"
+    echo "  1) Apptainer with CVMFS support (default — for DRAC/Alliance clusters)"
+    echo "  2) Apptainer (standalone)"
+    echo "  3) Docker"
+    echo "  4) Cancel"
+    echo ""
+    read -r -p "Choice [1]: " choice
+    choice="${choice:-1}"
+
+    case "${choice}" in
+      1) CONTAINER_TYPE="apptainer-cvmfs" ;;
+      2) CONTAINER_TYPE="apptainer" ;;
+      3) CONTAINER_TYPE="docker" ;;
+      4) echo "Cancelled."; exit 0 ;;
+      *)
+        echo "Error: invalid choice '${choice}'. Enter 1, 2, 3, or 4."
+        exit 1
+        ;;
+    esac
+
+    echo ""
+    echo "Selected: ${CONTAINER_TYPE}"
+    echo ""
+
+    if [ "${CONTAINER_TYPE}" != "docker" ]; then
+      load_apptainer
+    fi
+
+    echo "Building container image..."
+    echo ""
+
+    case "${CONTAINER_TYPE}" in
+      apptainer-cvmfs)
+        SIF_IMAGE="${CONTAGENT_DIR}/apptainer-cvmfs.sif"
+        apptainer build --fakeroot --force "${SIF_IMAGE}" "${SCRIPT_DIR}/apptainer-cvmfs.def"
+        ;;
+      apptainer)
+        SIF_IMAGE="${CONTAGENT_DIR}/apptainer.sif"
+        apptainer build --force "${SIF_IMAGE}" "${SCRIPT_DIR}/apptainer.def"
+        ;;
+      docker)
+        docker build -t docklaude "${SCRIPT_DIR}"
+        ;;
+    esac
+
+    # Write settings only after a successful build
+    printf 'CONTAINER_TYPE=%s\n' "${CONTAINER_TYPE}" >"${SETTINGS_FILE}"
+    [ -n "${APPTAINER_MODULE:-}" ] && printf 'APPTAINER_MODULE=%s\n' "${APPTAINER_MODULE}" >>"${SETTINGS_FILE}"
+
+    echo ""
+    echo "Build complete."
+    echo "  Container type : ${CONTAINER_TYPE}"
+    echo "  Settings saved : ${SETTINGS_FILE}"
+    if [ "${CONTAINER_TYPE}" != "docker" ]; then
+      echo "  SIF image      : ${SIF_IMAGE}"
+    fi
+    ;;
+
+  # --- help / unknown ------------------------------------------------------
+  -h|--help|help)
+    usage
+    ;;
+  "")
+    usage
+    ;;
+  *)
+    echo "Error: unknown command '${1}'."
+    echo ""
+    usage
+    exit 1
+    ;;
+esac

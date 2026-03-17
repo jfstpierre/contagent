@@ -1,0 +1,10 @@
+# Per-workspace container state (credentials, home dirs, module snapshots)
+.contagent/
+
+# Legacy workspace dirs (pre-rename)
+.applaude/
+.appsur/
+.docklaude/
+
+# Built container images
+*.sif
