@@ -29,6 +29,41 @@ read_setting() {
   grep "^${1}=" "${SETTINGS_FILE}" 2>/dev/null | cut -d= -f2-
 }
 
+# Write or update a single key in the settings file
+set_setting() {
+  local key="$1" value="$2"
+  mkdir -p "${CONTAGENT_DIR}"
+  if grep -q "^${key}=" "${SETTINGS_FILE}" 2>/dev/null; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${SETTINGS_FILE}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >>"${SETTINGS_FILE}"
+  fi
+}
+
+# Warn when running from HOME (sandboxing defeat)
+check_home_dir() {
+  [ "$(pwd)" != "${HOME}" ] && return
+  [ "$(read_setting HOME_WARN)" = "disabled" ] && return
+
+  echo "Warning: you are running contagent from your home directory (${HOME})."
+  echo "This mounts your entire home directory as the agent workspace, allowing"
+  echo "the agent to read and modify all your files — defeating sandboxing."
+  echo ""
+  while true; do
+    read -r -p "Proceed? [y]es / [n]o / [d]isable this warning forever: " choice
+    case "${choice}" in
+      [Yy]) return ;;
+      [Nn]) echo "Aborted."; exit 1 ;;
+      [Dd])
+        set_setting HOME_WARN disabled
+        echo "Warning disabled. To re-enable, remove HOME_WARN=disabled from ${SETTINGS_FILE}."
+        return
+        ;;
+      *) echo "Please enter y, n, or d." ;;
+    esac
+  done
+}
+
 # Print the current container state
 show_container_state() {
   if [ ! -f "${SETTINGS_FILE}" ]; then
@@ -104,6 +139,7 @@ case "${1:-}" in
       echo "Run 'contagent build' first to set up your container."
       exit 1
     fi
+    check_home_dir
     CONTAINER_TYPE="$(read_setting CONTAINER_TYPE)"
     case "${1}" in
       agent)
@@ -187,8 +223,11 @@ case "${1:-}" in
     esac
 
     # Write settings only after a successful build
+    # Preserve HOME_WARN across rebuilds
+    HOME_WARN_SAVED="$(read_setting HOME_WARN)"
     printf 'CONTAINER_TYPE=%s\n' "${CONTAINER_TYPE}" >"${SETTINGS_FILE}"
     [ -n "${APPTAINER_MODULE:-}" ] && printf 'APPTAINER_MODULE=%s\n' "${APPTAINER_MODULE}" >>"${SETTINGS_FILE}"
+    [ -n "${HOME_WARN_SAVED:-}" ] && printf 'HOME_WARN=%s\n' "${HOME_WARN_SAVED}" >>"${SETTINGS_FILE}"
 
     echo ""
     echo "Build complete."
