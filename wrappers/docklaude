@@ -10,7 +10,7 @@ CONTAINER_NAME="docklaude-$$"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-DOCKLAUDE_DIR="${WORKSPACE}/.docklaude"
+DOCKLAUDE_DIR="${WORKSPACE}/.contagent/docklaude"
 
 # Host Claude directory (for credentials/settings)
 HOST_CLAUDE_DIR="${HOME}/.claude"
@@ -30,14 +30,14 @@ if [ ! -f "${HOST_CLAUDE_JSON}" ]; then
     exit 1
 fi
 
-# Create .docklaude directory structure
+# Create .contagent/docklaude directory structure
 mkdir -p "${DOCKLAUDE_DIR}/.claude"
 
 # Container-side Claude config directory
 CONTAINER_CLAUDE_DIR="${DOCKLAUDE_DIR}/.claude"
 CONTAINER_CLAUDE_JSON="${DOCKLAUDE_DIR}/.claude.json"
 
-# Copy credentials from host if they don't exist in container's .docklaude
+# Copy credentials from host if they don't exist in container's .contagent/docklaude
 # This ensures host files remain untouched while container has its own copies
 if [ ! -f "${CONTAINER_CLAUDE_DIR}/.credentials.json" ]; then
     cp "${HOST_CLAUDE_DIR}/.credentials.json" "${CONTAINER_CLAUDE_DIR}/.credentials.json"
@@ -53,12 +53,12 @@ fi
 # Ensure the image exists
 if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
     echo "Image '${IMAGE_NAME}' not found. Building..."
-    SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+    SCRIPT_DIR="$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")"
     docker build -t "${IMAGE_NAME}" "${SCRIPT_DIR}"
 fi
 
 # Run the container with:
-# - Writable mount of .docklaude/.claude (container's copy of config)
+# - Writable mount of .contagent/docklaude/.claude (container's copy of config)
 # - Read-write mount of workspace
 # - Userspace mode (--user) to ensure files are owned by the host user
 # - Pass through all arguments to claude

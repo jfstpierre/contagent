@@ -164,7 +164,7 @@ case "${1:-}" in
         esac
         ;;
     esac
-    exec "${SCRIPT_DIR}/${SCRIPT}" "${@:2}"
+    exec "${SCRIPT_DIR}/wrappers/${SCRIPT}" "${@:2}"
     ;;
 
   # --- build ---------------------------------------------------------------
