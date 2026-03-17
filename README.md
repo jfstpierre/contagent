@@ -3,22 +3,17 @@
 Container wrappers for agentic coding tools that sandbox execution to the selected workspace directory.
 
 ## Supported tools
+- Claude Code
+- Cursor CLI
+- OpenCode
 
-| Tool | Variant | Runtime | Target environment |
-|---|---|---|---|
-| Claude Code | `docklaude` | Docker | Local workstation |
-| Claude Code | `applaude` | Apptainer | HPC clusters (generic) |
-| Claude Code | `applaude-cvmfs` | Apptainer | DRAC/Alliance clusters (Cedar, Graham, Narval, Béluga, Niagara) |
-| Cursor CLI | `docksur` | Docker | Local workstation |
-| Cursor CLI | `appsur` | Apptainer | HPC clusters (generic) |
-| Cursor CLI | `appsur-cvmfs` | Apptainer | DRAC/Alliance clusters |
-| OpenCode | `dockopen` | Docker | Local workstation |
-| OpenCode | `appopen` | Apptainer | HPC clusters (generic) |
-| OpenCode | `appopen-cvmfs` | Apptainer | DRAC/Alliance clusters |
+## Supported container 
+- Apptainer with/without CVMFS support (DRAC/Alliance clusters)
+- Docker
 
 ## Prerequisites
 
-- The target agentic tool configured on the host (e.g. `claude login`, `cursor login`, or OpenCode with API keys set up)
+- The target agentic tool configured on the host (the initial configuration and credentials are copied to each local workspace of the coding agent, but `claude login`, `agent login`, or `opencode auth login` must first be executed on the host) 
 - Docker (for Docker variants) or Apptainer (for Apptainer variants)
 
 ---
@@ -39,7 +34,6 @@ cd /path/to/contagent
 | 1 (default) | `apptainer-cvmfs` | `~/.contagent/apptainer-cvmfs.sif` |
 | 2 | `apptainer` | `~/.contagent/apptainer.sif` |
 | 3 | `docker` | `docklaude` Docker image |
-| 4 | Cancel | — |
 
 The selected type is saved to `~/.contagent/settings` and used by all subsequent `contagent` commands.
 
@@ -47,12 +41,12 @@ The selected type is saved to `~/.contagent/settings` and used by all subsequent
 
 ```bash
 cd /path/to/project
-/path/to/contagent/contagent claude      # Claude Code
-/path/to/contagent/contagent agent       # Cursor CLI
-/path/to/contagent/contagent opencode    # OpenCode
+/path/to/contagent/contagent claude [...]     # Claude Code
+/path/to/contagent/contagent agent [...]      # Cursor CLI
+/path/to/contagent/contagent opencode [...]   # OpenCode
 ```
 
-All arguments are passed through to the underlying tool. The wrapper scripts can also be invoked directly.
+All arguments are passed through to the underlying tool.
 
 ---
 
