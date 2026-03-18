@@ -5,6 +5,8 @@ set -e
 
 # Configuration
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
 SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer-cvmfs.sif"
 
 # Get absolute path of workspace (current directory)
@@ -21,88 +23,16 @@ fi
 # Create per-workspace home directory structure
 mkdir -p "${CONTAINER_HOME}"
 
-# Ensure lmod's module function is available
-ensure_module() {
-  if ! type module >/dev/null 2>&1; then
-    for lmod_init in \
-      /cvmfs/soft.computecanada.ca/nix/var/nix/profiles/16.09/lmod/lmod/init/bash \
-      /etc/profile.d/lmod.sh \
-      /usr/share/lmod/lmod/init/bash; do
-      [ -f "$lmod_init" ] && { source "$lmod_init"; return 0; }
-    done
-    return 1
-  fi
-}
-
 # Load the Apptainer module recorded by contagent, if any
-SETTINGS_FILE="${CONTAGENT_DIR:-${HOME}/.contagent}/settings"
-if [ -f "${SETTINGS_FILE}" ]; then
-  APPTAINER_MODULE="$(grep '^APPTAINER_MODULE=' "${SETTINGS_FILE}" | cut -d= -f2-)"
-  if [ -n "${APPTAINER_MODULE:-}" ]; then
-    if ensure_module; then
-      module load "${APPTAINER_MODULE}"
-    else
-      echo "Warning: lmod unavailable — could not load Apptainer module '${APPTAINER_MODULE}'."
-    fi
-  fi
-fi
+load_apptainer_module
 
 # Build bind args: always bind workspace; bind /cvmfs if present on host
 BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
 [ -d "/cvmfs" ] && BIND_ARGS+=("--bind" "/cvmfs:/cvmfs")
 
 # Parse .contagent/mounts for extra bind mounts
-# Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)
-MOUNTS_FILE="${WORKSPACE}/.contagent/mounts"
-
-# Create .contagent/mounts on first run with commented instructions
-if [ ! -f "${MOUNTS_FILE}" ]; then
-  mkdir -p "${WORKSPACE}/.contagent"
-  cat > "${MOUNTS_FILE}" << 'MOUNTS_TEMPLATE'
-# Extra bind mounts for contagent containers
-#
-# To mount additional host paths into the container, add entries below, one per line:
-#   host_path:container_path[:mode]
-#
-# mode is optional; defaults to "ro" (read-only). Use "rw" for read-write access.
-# Tilde (~) is expanded to your home directory ($HOME).
-# Paths that do not exist on the host are skipped with a warning.
-# Lines starting with # are comments and are ignored.
-#
-# Examples:
-#   /data/shared:/data:ro
-#   ~/models:/models:ro
-#   /scratch/myproject:/scratch:rw
-MOUNTS_TEMPLATE
-  echo "Note: .contagent/mounts created."
-  echo "  Add extra bind mounts for the container by editing:"
-  echo "    ${MOUNTS_FILE}"
-  echo "  Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)"
-  echo "  Example: /data/shared:/data:ro"
-  echo ""
-fi
-
-if [ -f "${MOUNTS_FILE}" ]; then
-  while IFS= read -r line || [ -n "$line" ]; do
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    IFS=: read -r host_path container_path mode <<< "$line"
-    if [ -z "${host_path}" ] || [ -z "${container_path}" ]; then
-      echo "Warning: invalid entry in ${MOUNTS_FILE}: ${line}"
-      continue
-    fi
-    mode="${mode:-ro}"
-    if [[ "${mode}" != "ro" && "${mode}" != "rw" ]]; then
-      echo "Warning: unknown mode '${mode}' in ${MOUNTS_FILE} (use ro or rw), defaulting to ro"
-      mode="ro"
-    fi
-    host_path="${host_path/#\~/$HOME}"
-    if [ ! -e "${host_path}" ]; then
-      echo "Warning: mount source does not exist: ${host_path} (skipping)"
-      continue
-    fi
-    BIND_ARGS+=("--bind" "${host_path}:${container_path}:${mode}")
-  done < "${MOUNTS_FILE}"
-fi
+init_mounts_file "${WORKSPACE}"
+parse_mounts_apptainer "${WORKSPACE}" BIND_ARGS
 
 export APPTAINERENV_PATH="/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
 

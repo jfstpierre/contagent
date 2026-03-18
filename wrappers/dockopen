@@ -4,6 +4,9 @@
 
 set -e
 
+# shellcheck source=lib/common.sh
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/lib/common.sh"
+
 # Configuration
 IMAGE_NAME="docklaude"
 CONTAINER_NAME="dockopen-$$"
@@ -58,58 +61,9 @@ if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
 fi
 
 # Parse .contagent/mounts for extra bind mounts
-# Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)
-MOUNTS_FILE="${WORKSPACE}/.contagent/mounts"
 EXTRA_BIND_ARGS=()
-
-# Create .contagent/mounts on first run with commented instructions
-if [ ! -f "${MOUNTS_FILE}" ]; then
-  mkdir -p "${WORKSPACE}/.contagent"
-  cat > "${MOUNTS_FILE}" << 'MOUNTS_TEMPLATE'
-# Extra bind mounts for contagent containers
-#
-# To mount additional host paths into the container, add entries below, one per line:
-#   host_path:container_path[:mode]
-#
-# mode is optional; defaults to "ro" (read-only). Use "rw" for read-write access.
-# Tilde (~) is expanded to your home directory ($HOME).
-# Paths that do not exist on the host are skipped with a warning.
-# Lines starting with # are comments and are ignored.
-#
-# Examples:
-#   /data/shared:/data:ro
-#   ~/models:/models:ro
-#   /scratch/myproject:/scratch:rw
-MOUNTS_TEMPLATE
-  echo "Note: .contagent/mounts created."
-  echo "  Add extra bind mounts for the container by editing:"
-  echo "    ${MOUNTS_FILE}"
-  echo "  Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)"
-  echo "  Example: /data/shared:/data:ro"
-  echo ""
-fi
-
-if [ -f "${MOUNTS_FILE}" ]; then
-  while IFS= read -r line || [ -n "$line" ]; do
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    IFS=: read -r host_path container_path mode <<< "$line"
-    if [ -z "${host_path}" ] || [ -z "${container_path}" ]; then
-      echo "Warning: invalid entry in ${MOUNTS_FILE}: ${line}"
-      continue
-    fi
-    mode="${mode:-ro}"
-    if [[ "${mode}" != "ro" && "${mode}" != "rw" ]]; then
-      echo "Warning: unknown mode '${mode}' in ${MOUNTS_FILE} (use ro or rw), defaulting to ro"
-      mode="ro"
-    fi
-    host_path="${host_path/#\~/$HOME}"
-    if [ ! -e "${host_path}" ]; then
-      echo "Warning: mount source does not exist: ${host_path} (skipping)"
-      continue
-    fi
-    EXTRA_BIND_ARGS+=("-v" "${host_path}:${container_path}:${mode}")
-  done < "${MOUNTS_FILE}"
-fi
+init_mounts_file "${WORKSPACE}"
+parse_mounts_docker "${WORKSPACE}" EXTRA_BIND_ARGS
 
 # Run opencode with:
 # --entrypoint: override image default to run opencode

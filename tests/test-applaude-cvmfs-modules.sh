@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-SCRIPT="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../applaude-cvmfs"
+_LIB_="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../wrappers/lib/common.sh"
 PASS=0
 FAIL=0
 
@@ -47,7 +47,7 @@ assert_not_contains() {
 
 # run_test LOADED_MODULES FILE_CONTENT CHOICES
 #   LOADED_MODULES : colon-separated lmod format, or ""
-#   FILE_CONTENT   : initial content for .applaude/modules, or "" to skip creation
+#   FILE_CONTENT   : initial content for .contagent/applaude/modules, or "" to skip creation
 #   CHOICES        : newline-separated answers for the prompt (e.g. $'C', $'x\nU')
 # After the call, MODULES_AFTER and MODULE_CALLS are set.
 run_test() {
@@ -56,27 +56,16 @@ run_test() {
   local tmpdir
   tmpdir="$(mktemp -d)"
   local workspace="${tmpdir}/workspace"
-  local fake_home="${tmpdir}/home"
-  local fake_bin="${tmpdir}/bin"
   local module_log="${tmpdir}/module.log"
 
-  mkdir -p "${workspace}/.contagent/applaude/home/.claude" "${fake_home}/.claude" "${fake_bin}" "${tmpdir}/contagent"
-  touch "${tmpdir}/contagent/apptainer-cvmfs.sif"
+  mkdir -p "${workspace}/.contagent/applaude"
 
-  # Fake credentials (pre-copied so the cp steps are skipped by the -f guards)
-  echo '{}' >"${fake_home}/.claude/.credentials.json"
-  echo '{}' >"${fake_home}/.claude.json"
-  cp "${fake_home}/.claude/.credentials.json" "${workspace}/.contagent/applaude/home/.claude/.credentials.json"
-  cp "${fake_home}/.claude.json" "${workspace}/.contagent/applaude/home/.claude.json"
+  local modules_file="${workspace}/.contagent/applaude/modules"
 
   # Write initial modules file if provided
-  [ -n "$file_content" ] && printf '%s' "$file_content" >"${workspace}/.contagent/applaude/modules"
+  [ -n "$file_content" ] && printf '%s' "$file_content" >"${modules_file}"
 
-  # Mock apptainer (no-op)
-  printf '#!/bin/bash\nexit 0\n' >"${fake_bin}/apptainer"
-  chmod +x "${fake_bin}/apptainer"
-
-  # Run script with a mocked module() function and controlled stdin
+  # Run reconcile_cvmfs_modules with a mocked module() function and controlled stdin.
   # Unset BASH_ENV to prevent lmod from re-sourcing its init file and
   # overwriting our mock module function in every child bash process.
   (
@@ -84,15 +73,13 @@ run_test() {
     export _MODULE_LOG="${module_log}"
     module() { echo "module $*" >>"${_MODULE_LOG}"; }
     export -f module
-    cd "${workspace}"
-    export HOME="${fake_home}"
-    export CONTAGENT_DIR="${tmpdir}/contagent"
     export LOADEDMODULES="${loaded}"
-    export PATH="${fake_bin}:${PATH}"
-    printf '%s\n' "$choices" | bash "${SCRIPT}"
+    # shellcheck source=../wrappers/lib/common.sh
+    source "${_LIB_}"
+    printf '%s\n' "$choices" | reconcile_cvmfs_modules "${modules_file}"
   ) >/dev/null 2>&1
 
-  MODULES_AFTER="$(cat "${workspace}/.contagent/applaude/modules" 2>/dev/null || echo "")"
+  MODULES_AFTER="$(cat "${modules_file}" 2>/dev/null || echo "")"
   MODULE_CALLS="$(cat "${module_log}" 2>/dev/null || echo "")"
 
   rm -rf "${tmpdir}"
