@@ -1,51 +1,19 @@
 #!/bin/bash
-# docksur - Docker wrapper for Cursor agent
-# Provides sandboxing by limiting file access to a workspace folder.
+# dockbash - Docker wrapper: interactive bash shell in the container
 
 set -e
 
 # Configuration
 IMAGE_NAME="docklaude"
-CONTAINER_NAME="docksur-$$"
+CONTAINER_NAME="dockbash-$$"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-DOCKSUR_DIR="${WORKSPACE}/.contagent/docksur"
-CONTAINER_HOME="${DOCKSUR_DIR}/home"
+DOCKBASH_DIR="${WORKSPACE}/.contagent/dockbash"
+CONTAINER_HOME="${DOCKBASH_DIR}/home"
 
-# Host Cursor directories (for credentials/settings)
-HOST_CURSOR_AUTH="${HOME}/.config/cursor/auth.json"
-HOST_CURSOR_CONFIG="${HOME}/.cursor/cli-config.json"
-
-# Check if host auth.json exists
-if [ ! -f "${HOST_CURSOR_AUTH}" ]; then
-  echo "Error: ${HOST_CURSOR_AUTH} does not exist."
-  echo "Please run 'cursor login' first to set up your Cursor credentials."
-  exit 1
-fi
-
-# Check if host cli-config.json exists
-if [ ! -f "${HOST_CURSOR_CONFIG}" ]; then
-  echo "Error: ${HOST_CURSOR_CONFIG} does not exist."
-  echo "Please run 'cursor login' first to set up your Cursor configuration."
-  exit 1
-fi
-
-# Credentials live in ~/.contagent (private, never in the shareable workspace).
-# Copied fresh every launch so token refreshes from previous sessions are picked up.
-CRED_DIR="${CONTAGENT_DIR:-${HOME}/.contagent}/cursor/creds"
-mkdir -p "${CRED_DIR}"
-cp "${HOST_CURSOR_AUTH}" "${CRED_DIR}/auth.json"
-chmod 600 "${CRED_DIR}/auth.json"
-cp "${HOST_CURSOR_CONFIG}" "${CRED_DIR}/cli-config.json"
-chmod 600 "${CRED_DIR}/cli-config.json"
-
-# Persistent per-workspace home (not sensitive).
-# Empty stubs ensure Docker treats these as files rather than creating directories.
-# The `: >` also clears any credentials left there by an older version of this script.
-mkdir -p "${CONTAINER_HOME}/.config/cursor" "${CONTAINER_HOME}/.cursor"
-: > "${CONTAINER_HOME}/.config/cursor/auth.json"
-: > "${CONTAINER_HOME}/.cursor/cli-config.json"
+# Create per-workspace home directory structure
+mkdir -p "${CONTAINER_HOME}"
 
 # Ensure the image exists
 if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
@@ -108,25 +76,21 @@ if [ -f "${MOUNTS_FILE}" ]; then
   done < "${MOUNTS_FILE}"
 fi
 
-# Run cursor-agent with:
-# --entrypoint: override image default to run cursor-agent
+# Run bash with:
+# --entrypoint: override image default to run bash
 # --user: run as current user so files are owned by the host user
 # -v workspace: mount workspace read-write
 # -v home: mount per-workspace state dir as container home
 # -e HOME: point HOME at the mounted state dir
 # Extra mounts from .contagent/mounts
 # --workdir: start in /workspace
-# Pass through all arguments to cursor-agent
 docker run --rm -it --init \
   --name "${CONTAINER_NAME}" \
-  --entrypoint cursor-agent \
+  --entrypoint bash \
   --user "$(id -u):$(id -g)" \
   -v "${WORKSPACE}:/workspace" \
-  -v "${CONTAINER_HOME}:/home/cursor" \
-  -v "${CRED_DIR}/auth.json:/home/cursor/.config/cursor/auth.json" \
-  -v "${CRED_DIR}/cli-config.json:/home/cursor/.cursor/cli-config.json" \
+  -v "${CONTAINER_HOME}:/home/bash" \
   "${EXTRA_BIND_ARGS[@]}" \
-  -e HOME=/home/cursor \
+  -e HOME=/home/bash \
   --workdir /workspace \
-  "${IMAGE_NAME}" \
-  "$@"
+  "${IMAGE_NAME}"

@@ -3,12 +3,12 @@ From: node:20-slim
 
 %post
     apt-get update && apt-get install -y --no-install-recommends \
-        curl git ca-certificates \
+        curl git ca-certificates openssh-client \
         && rm -rf /var/lib/apt/lists/*
     curl -fsSL https://claude.ai/install.sh | bash
     curl https://cursor.com/install -fsS | bash
     curl -fsSL https://opencode.ai/install | bash
-    chmod 755 /root && chmod -R a+rX /root/.local
+    chmod 755 /root && chmod -R a+rX /root/.local /root/.opencode
     mkdir -p /workspace /cvmfs
 
 %environment

@@ -48,6 +48,9 @@ These are created by contagent wrappers to isolate tool state from the host. All
 | `.contagent/dockopen/home/` | `dockopen` (Docker) | Full workspace state directory for OpenCode |
 | `.contagent/appopen/home/` | `appopen`, `appopen-cvmfs` (Apptainer) | Full workspace state directory for OpenCode (mirrors `~/.config/opencode/`, `~/.local/share/opencode/` structure) |
 | `.contagent/appopen/modules` | `appopen-cvmfs` only | List of lmod modules loaded for the session |
+| `.contagent/dockbash/home/` | `dockbash` (Docker) | Isolated home directory for interactive shell sessions |
+| `.contagent/appbash/home/` | `appbash`, `appbash-cvmfs` (Apptainer) | Isolated home directory for interactive shell sessions |
+| `.contagent/mounts` | all variants | Optional extra bind mounts file (`host_path:container_path[:mode]`) |
 
 The per-tool `home/` directories contain a copy of the tool's global state scoped to the workspace. Credentials are **copied** from the host on first run; the host files are never modified.
 

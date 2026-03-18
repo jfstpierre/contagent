@@ -44,6 +44,7 @@ cd /path/to/project
 /path/to/contagent/contagent claude [...]     # Claude Code
 /path/to/contagent/contagent agent [...]      # Cursor CLI
 /path/to/contagent/contagent opencode [...]   # OpenCode
+/path/to/contagent/contagent bash             # Interactive shell
 ```
 
 All arguments are passed through to the underlying tool.
@@ -59,8 +60,25 @@ Each tool maps to a wrapper script selected automatically based on the container
 | `contagent claude` | `docklaude` | `applaude` | `applaude-cvmfs` |
 | `contagent agent` | `docksur` | `appsur` | `appsur-cvmfs` |
 | `contagent opencode` | `dockopen` | `appopen` | `appopen-cvmfs` |
+| `contagent bash` | `dockbash` | `appbash` | `appbash-cvmfs` |
 
 Workspace state is stored under `.contagent/<variant>/` in the project directory. Credentials are copied from the host on first run; host files are never modified.
+
+`contagent bash` launches an interactive shell in the same container, with the same workspace mount and state isolation as the agent commands. This is useful for debugging or running one-off commands in the container environment.
+
+---
+
+## Extra bind mounts
+
+To mount additional host paths into the container, create a `.contagent/mounts` file in the project directory:
+
+```
+# host_path:container_path[:mode]   (mode: ro or rw, default: ro)
+/data/shared:/data:ro
+~/models:/models:ro
+```
+
+Lines starting with `#` are ignored. Each entry mounts `host_path` at `container_path` inside the container. Tilde (`~`) is expanded to `$HOME`. Paths that do not exist on the host are skipped with a warning.
 
 ---
 
@@ -106,7 +124,7 @@ All variants:
 - Isolate container HOME to prevent host config leaking in
 - Pass all command-line arguments through to the underlying tool
 
-> **Warning**: Do not run any of these scripts from your home directory (`~/`). This mounts your entire home as the workspace.
+> **Warning**: Do not run `contagent` from your home directory (`~/`). This mounts your entire home as the workspace. If you do, you will be prompted to confirm, with the option to disable the warning permanently.
 
 ## Security model
 

@@ -32,31 +32,43 @@ if [ ! -f "${SIF_IMAGE}" ]; then
   exit 1
 fi
 
-# Create per-workspace home directory structure
+# Persistent per-workspace home (not sensitive).
 mkdir -p "${CONTAINER_HOME}/.local/share/opencode" \
          "${CONTAINER_HOME}/.local/state/opencode" \
          "${CONTAINER_HOME}/.config/opencode"
 
-# Copy credentials from host if they don't exist in container's .appopen
-# This ensures host files remain untouched while container has its own copies
-if [ ! -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" ]; then
-  cp "${HOST_OPENCODE_AUTH}" "${CONTAINER_HOME}/.local/share/opencode/auth.json"
-  chmod 600 "${CONTAINER_HOME}/.local/share/opencode/auth.json"
-fi
-
-# Copy opencode.json (settings) from host if present and not yet copied
-if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ] && \
-   [ ! -f "${CONTAINER_HOME}/.config/opencode/opencode.json" ]; then
-  cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${CONTAINER_HOME}/.config/opencode/opencode.json"
-fi
-
-# Copy model.json (recently-used model preference) from host if present and not yet copied
-# prompt-history.jsonl is intentionally left workspace-local
+# model.json (recently-used model preference) is not sensitive; seed workspace-local copy.
+# prompt-history.jsonl is intentionally left workspace-local.
 HOST_OPENCODE_MODEL="${HOME}/.local/state/opencode/model.json"
 if [ -f "${HOST_OPENCODE_MODEL}" ] && \
    [ ! -f "${CONTAINER_HOME}/.local/state/opencode/model.json" ]; then
   cp "${HOST_OPENCODE_MODEL}" "${CONTAINER_HOME}/.local/state/opencode/model.json"
 fi
+
+# Apptainer (unprivileged) does not support layering a --bind on top of --home,
+# so we build a merged home: existing session state + fresh credentials.
+RUNTIME_DIR="${CONTAGENT_DIR:-${HOME}/.contagent}/runtime"
+mkdir -p "${RUNTIME_DIR}"
+MERGED_HOME=$(mktemp -d "${RUNTIME_DIR}/contagent-XXXXXX")
+chmod 700 "${MERGED_HOME}"
+
+cp -a "${CONTAINER_HOME}/." "${MERGED_HOME}/" 2>/dev/null || true
+mkdir -p "${MERGED_HOME}/.local/share/opencode" "${MERGED_HOME}/.config/opencode"
+cp "${HOST_OPENCODE_AUTH}" "${MERGED_HOME}/.local/share/opencode/auth.json"
+chmod 600 "${MERGED_HOME}/.local/share/opencode/auth.json"
+if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ]; then
+  cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${MERGED_HOME}/.config/opencode/opencode.json"
+fi
+
+_contagent_cleanup() {
+  cp -a "${MERGED_HOME}/." "${CONTAINER_HOME}/" 2>/dev/null || true
+  rm -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" \
+        "${CONTAINER_HOME}/.config/opencode/opencode.json"
+  rm -rf "${MERGED_HOME}"
+}
+trap '_contagent_cleanup' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Ensure lmod's module function is available
 ensure_module() {
@@ -147,24 +159,77 @@ if [ -f "${SETTINGS_FILE}" ]; then
   fi
 fi
 
-# Build bind args: always bind workspace; bind /cvmfs if present on host
+# Build bind args: always bind workspace; bind /cvmfs if present on host.
 BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
 [ -d "/cvmfs" ] && BIND_ARGS+=("--bind" "/cvmfs:/cvmfs")
+
+# Parse .contagent/mounts for extra bind mounts
+# Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)
+MOUNTS_FILE="${WORKSPACE}/.contagent/mounts"
+
+# Create .contagent/mounts on first run with commented instructions
+if [ ! -f "${MOUNTS_FILE}" ]; then
+  mkdir -p "${WORKSPACE}/.contagent"
+  cat > "${MOUNTS_FILE}" << 'MOUNTS_TEMPLATE'
+# Extra bind mounts for contagent containers
+#
+# To mount additional host paths into the container, add entries below, one per line:
+#   host_path:container_path[:mode]
+#
+# mode is optional; defaults to "ro" (read-only). Use "rw" for read-write access.
+# Tilde (~) is expanded to your home directory ($HOME).
+# Paths that do not exist on the host are skipped with a warning.
+# Lines starting with # are comments and are ignored.
+#
+# Examples:
+#   /data/shared:/data:ro
+#   ~/models:/models:ro
+#   /scratch/myproject:/scratch:rw
+MOUNTS_TEMPLATE
+  echo "Note: .contagent/mounts created."
+  echo "  Add extra bind mounts for the container by editing:"
+  echo "    ${MOUNTS_FILE}"
+  echo "  Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)"
+  echo "  Example: /data/shared:/data:ro"
+  echo ""
+fi
+
+if [ -f "${MOUNTS_FILE}" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    IFS=: read -r host_path container_path mode <<< "$line"
+    if [ -z "${host_path}" ] || [ -z "${container_path}" ]; then
+      echo "Warning: invalid entry in ${MOUNTS_FILE}: ${line}"
+      continue
+    fi
+    mode="${mode:-ro}"
+    if [[ "${mode}" != "ro" && "${mode}" != "rw" ]]; then
+      echo "Warning: unknown mode '${mode}' in ${MOUNTS_FILE} (use ro or rw), defaulting to ro"
+      mode="ro"
+    fi
+    host_path="${host_path/#\~/$HOME}"
+    if [ ! -e "${host_path}" ]; then
+      echo "Warning: mount source does not exist: ${host_path} (skipping)"
+      continue
+    fi
+    BIND_ARGS+=("--bind" "${host_path}:${container_path}:${mode}")
+  done < "${MOUNTS_FILE}"
+fi
 
 # Propagate PATH with opencode's install dir prepended.
 # Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so startup
 # checks don't warn about ~/.local/bin not being in PATH.
 # All other module-set env vars (LD_LIBRARY_PATH, PYTHONPATH, EBROOT*, etc.)
 # flow into the container automatically via Apptainer's default host-env inheritance.
-export APPTAINERENV_PATH="/root/.opencode/bin:/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
+export APPTAINERENV_PATH="/root/.opencode/bin:/root/.local/bin:${MERGED_HOME}/.local/bin:${PATH}"
 
 # Run opencode with:
-# --home: override host HOME with per-workspace dir
-# --bind: mount workspace read-write, plus /cvmfs if available
+# --home: merged home (session state + credentials; never persisted back with credentials)
+# --bind: mount workspace read-write, plus /cvmfs if available, plus .contagent/mounts
 # --workdir: start in /workspace
 # Pass through all arguments to opencode
 apptainer exec \
-  --home "${CONTAINER_HOME}" \
+  --home "${MERGED_HOME}" \
   "${BIND_ARGS[@]}" \
   --workdir /workspace \
   "${SIF_IMAGE}" \

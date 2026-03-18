@@ -7,10 +7,6 @@ SCRIPT="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../applaude-cvmfs"
 PASS=0
 FAIL=0
 
-# The script checks for a real .sif file; create a fake one and clean up on exit
-FAKE_SIF="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../applaude-cvmfs.sif"
-touch "${FAKE_SIF}"
-trap 'rm -f "${FAKE_SIF}"' EXIT
 
 ok() {
   echo "  PASS: $1"
@@ -64,16 +60,17 @@ run_test() {
   local fake_bin="${tmpdir}/bin"
   local module_log="${tmpdir}/module.log"
 
-  mkdir -p "${workspace}/.applaude/home/.claude" "${fake_home}/.claude" "${fake_bin}"
+  mkdir -p "${workspace}/.contagent/applaude/home/.claude" "${fake_home}/.claude" "${fake_bin}" "${tmpdir}/contagent"
+  touch "${tmpdir}/contagent/apptainer-cvmfs.sif"
 
   # Fake credentials (pre-copied so the cp steps are skipped by the -f guards)
   echo '{}' >"${fake_home}/.claude/.credentials.json"
   echo '{}' >"${fake_home}/.claude.json"
-  cp "${fake_home}/.claude/.credentials.json" "${workspace}/.applaude/home/.claude/.credentials.json"
-  cp "${fake_home}/.claude.json" "${workspace}/.applaude/home/.claude.json"
+  cp "${fake_home}/.claude/.credentials.json" "${workspace}/.contagent/applaude/home/.claude/.credentials.json"
+  cp "${fake_home}/.claude.json" "${workspace}/.contagent/applaude/home/.claude.json"
 
   # Write initial modules file if provided
-  [ -n "$file_content" ] && printf '%s' "$file_content" >"${workspace}/.applaude/modules"
+  [ -n "$file_content" ] && printf '%s' "$file_content" >"${workspace}/.contagent/applaude/modules"
 
   # Mock apptainer (no-op)
   printf '#!/bin/bash\nexit 0\n' >"${fake_bin}/apptainer"
@@ -89,12 +86,13 @@ run_test() {
     export -f module
     cd "${workspace}"
     export HOME="${fake_home}"
+    export CONTAGENT_DIR="${tmpdir}/contagent"
     export LOADEDMODULES="${loaded}"
     export PATH="${fake_bin}:${PATH}"
     printf '%s\n' "$choices" | bash "${SCRIPT}"
   ) >/dev/null 2>&1
 
-  MODULES_AFTER="$(cat "${workspace}/.applaude/modules" 2>/dev/null || echo "")"
+  MODULES_AFTER="$(cat "${workspace}/.contagent/applaude/modules" 2>/dev/null || echo "")"
   MODULE_CALLS="$(cat "${module_log}" 2>/dev/null || echo "")"
 
   rm -rf "${tmpdir}"

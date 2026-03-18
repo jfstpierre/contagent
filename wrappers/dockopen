@@ -24,26 +24,26 @@ if [ ! -f "${HOST_OPENCODE_AUTH}" ]; then
   exit 1
 fi
 
-# Create per-workspace home directory structure
+# Credentials and settings live in ~/.contagent (private, never in the shareable workspace).
+# Copied fresh every launch so token refreshes from previous sessions are picked up.
+CRED_DIR="${CONTAGENT_DIR:-${HOME}/.contagent}/opencode/creds"
+mkdir -p "${CRED_DIR}"
+cp "${HOST_OPENCODE_AUTH}" "${CRED_DIR}/auth.json"
+chmod 600 "${CRED_DIR}/auth.json"
+if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ]; then
+  cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${CRED_DIR}/opencode.json"
+fi
+
+# Persistent per-workspace home (not sensitive).
+# Empty stubs ensure Docker treats these as files rather than creating directories.
+# The `: >` also clears any credentials left there by an older version of this script.
 mkdir -p "${CONTAINER_HOME}/.local/share/opencode" \
          "${CONTAINER_HOME}/.local/state/opencode" \
          "${CONTAINER_HOME}/.config/opencode"
+: > "${CONTAINER_HOME}/.local/share/opencode/auth.json"
 
-# Copy credentials from host if they don't exist in container's .dockopen
-# This ensures host files remain untouched while container has its own copies
-if [ ! -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" ]; then
-  cp "${HOST_OPENCODE_AUTH}" "${CONTAINER_HOME}/.local/share/opencode/auth.json"
-  chmod 600 "${CONTAINER_HOME}/.local/share/opencode/auth.json"
-fi
-
-# Copy opencode.json (settings) from host if present and not yet copied
-if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ] && \
-   [ ! -f "${CONTAINER_HOME}/.config/opencode/opencode.json" ]; then
-  cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${CONTAINER_HOME}/.config/opencode/opencode.json"
-fi
-
-# Copy model.json (recently-used model preference) from host if present and not yet copied
-# prompt-history.jsonl is intentionally left workspace-local
+# model.json (recently-used model preference) is not sensitive; stays workspace-local.
+# prompt-history.jsonl is intentionally left workspace-local.
 HOST_OPENCODE_MODEL="${HOME}/.local/state/opencode/model.json"
 if [ -f "${HOST_OPENCODE_MODEL}" ] && \
    [ ! -f "${CONTAINER_HOME}/.local/state/opencode/model.json" ]; then
@@ -57,20 +57,83 @@ if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Parse .contagent/mounts for extra bind mounts
+# Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)
+MOUNTS_FILE="${WORKSPACE}/.contagent/mounts"
+EXTRA_BIND_ARGS=()
+
+# Create .contagent/mounts on first run with commented instructions
+if [ ! -f "${MOUNTS_FILE}" ]; then
+  mkdir -p "${WORKSPACE}/.contagent"
+  cat > "${MOUNTS_FILE}" << 'MOUNTS_TEMPLATE'
+# Extra bind mounts for contagent containers
+#
+# To mount additional host paths into the container, add entries below, one per line:
+#   host_path:container_path[:mode]
+#
+# mode is optional; defaults to "ro" (read-only). Use "rw" for read-write access.
+# Tilde (~) is expanded to your home directory ($HOME).
+# Paths that do not exist on the host are skipped with a warning.
+# Lines starting with # are comments and are ignored.
+#
+# Examples:
+#   /data/shared:/data:ro
+#   ~/models:/models:ro
+#   /scratch/myproject:/scratch:rw
+MOUNTS_TEMPLATE
+  echo "Note: .contagent/mounts created."
+  echo "  Add extra bind mounts for the container by editing:"
+  echo "    ${MOUNTS_FILE}"
+  echo "  Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)"
+  echo "  Example: /data/shared:/data:ro"
+  echo ""
+fi
+
+if [ -f "${MOUNTS_FILE}" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    IFS=: read -r host_path container_path mode <<< "$line"
+    if [ -z "${host_path}" ] || [ -z "${container_path}" ]; then
+      echo "Warning: invalid entry in ${MOUNTS_FILE}: ${line}"
+      continue
+    fi
+    mode="${mode:-ro}"
+    if [[ "${mode}" != "ro" && "${mode}" != "rw" ]]; then
+      echo "Warning: unknown mode '${mode}' in ${MOUNTS_FILE} (use ro or rw), defaulting to ro"
+      mode="ro"
+    fi
+    host_path="${host_path/#\~/$HOME}"
+    if [ ! -e "${host_path}" ]; then
+      echo "Warning: mount source does not exist: ${host_path} (skipping)"
+      continue
+    fi
+    EXTRA_BIND_ARGS+=("-v" "${host_path}:${container_path}:${mode}")
+  done < "${MOUNTS_FILE}"
+fi
+
 # Run opencode with:
 # --entrypoint: override image default to run opencode
 # --user: run as current user so files are owned by the host user
 # -v workspace: mount workspace read-write
 # -v home: mount per-workspace state dir as container home
 # -e HOME: point HOME at the mounted state dir
+# Extra mounts from .contagent/mounts
 # --workdir: start in /workspace
 # Pass through all arguments to opencode
+CRED_VOL_ARGS=("-v" "${CRED_DIR}/auth.json:/home/opencode/.local/share/opencode/auth.json")
+if [ -f "${CRED_DIR}/opencode.json" ]; then
+  : > "${CONTAINER_HOME}/.config/opencode/opencode.json"
+  CRED_VOL_ARGS+=("-v" "${CRED_DIR}/opencode.json:/home/opencode/.config/opencode/opencode.json")
+fi
+
 docker run --rm -it --init \
   --name "${CONTAINER_NAME}" \
   --entrypoint opencode \
   --user "$(id -u):$(id -g)" \
   -v "${WORKSPACE}:/workspace" \
   -v "${CONTAINER_HOME}:/home/opencode" \
+  "${CRED_VOL_ARGS[@]}" \
+  "${EXTRA_BIND_ARGS[@]}" \
   -e HOME=/home/opencode \
   --workdir /workspace \
   "${IMAGE_NAME}" \

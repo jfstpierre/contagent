@@ -19,6 +19,7 @@ usage() {
   echo "  claude      Run Claude Code inside the container"
   echo "  agent       Run Cursor agent inside the container"
   echo "  opencode    Run OpenCode inside the container"
+  echo "  bash        Start an interactive bash shell inside the container"
   echo ""
   echo "Run 'contagent build' first to set up the container before using"
   echo "the agent commands."
@@ -133,7 +134,7 @@ load_apptainer() {
 
 case "${1:-}" in
   # --- agent subcommands ---------------------------------------------------
-  claude|agent|opencode)
+  claude|agent|opencode|bash)
     if [ ! -f "${SETTINGS_FILE}" ]; then
       echo "Error: no settings found at ${SETTINGS_FILE}."
       echo "Run 'contagent build' first to set up your container."
@@ -161,6 +162,13 @@ case "${1:-}" in
           apptainer-cvmfs) SCRIPT="applaude-cvmfs" ;;
           apptainer)       SCRIPT="applaude" ;;
           docker)          SCRIPT="docklaude" ;;
+        esac
+        ;;
+      bash)
+        case "${CONTAINER_TYPE}" in
+          apptainer-cvmfs) SCRIPT="appbash-cvmfs" ;;
+          apptainer)       SCRIPT="appbash" ;;
+          docker)          SCRIPT="dockbash" ;;
         esac
         ;;
     esac
