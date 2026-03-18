@@ -132,6 +132,8 @@ load_apptainer() {
 # Dispatch
 # ---------------------------------------------------------------------------
 
+[ -n "${_CONTAGENT_LIB_ONLY:-}" ] && return 0
+
 case "${1:-}" in
   # --- agent subcommands ---------------------------------------------------
   claude|agent|opencode|bash)

@@ -132,3 +132,32 @@ All variants:
 - Credentials are copied to the workspace state directory before the container starts
 - Container cannot modify host credential files
 - All container state is confined to `.contagent/` in each workspace
+
+---
+
+## Running tests
+
+The test suite requires only bash — no Docker or Apptainer installation needed.
+
+```bash
+bash tests/run-all.sh
+```
+
+Individual test files can be run directly:
+
+```bash
+bash tests/test-common-mounts.sh
+bash tests/test-common-lmod.sh
+bash tests/test-contagent-settings.sh
+bash tests/test-wrapper-preflight.sh
+bash tests/test-credential-cleanup.sh
+```
+
+| File | What it covers |
+|------|----------------|
+| `tests/test-applaude-cvmfs-modules.sh` | `reconcile_cvmfs_modules()` |
+| `tests/test-common-mounts.sh` | `init_mounts_file`, `parse_mounts_apptainer`, `parse_mounts_docker` |
+| `tests/test-common-lmod.sh` | `ensure_module`, `load_apptainer_module`, `load_modules_from_file` |
+| `tests/test-contagent-settings.sh` | `read_setting`, `set_setting`, `check_home_dir` |
+| `tests/test-wrapper-preflight.sh` | Pre-flight checks for all 12 wrapper scripts |
+| `tests/test-credential-cleanup.sh` | Credential stripping from workspace state dir on exit |
