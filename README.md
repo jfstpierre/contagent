@@ -15,6 +15,7 @@ Container wrappers for agentic coding tools that sandbox execution to the select
 
 - The target agentic tool configured on the host (the initial configuration and credentials are copied to each local workspace of the coding agent, but `claude login`, `agent login`, or `opencode auth login` must first be executed on the host)
 - Docker (for Docker variants) or Apptainer (for Apptainer variants)
+- `python3` (for OpenCode variants — used to merge context into `opencode.json`; available by default on all supported platforms)
 
 ---
 
@@ -65,6 +66,27 @@ Each tool maps to a wrapper script selected automatically based on the container
 Workspace state is stored under `.contagent/<variant>/` in the project directory. Credentials are copied from the host on first run; host files are never modified.
 
 `contagent bash` launches an interactive shell in the same container, with the same workspace mount and state isolation as the agent commands. This is useful for debugging or running one-off commands in the container environment.
+
+---
+
+## Agent container awareness
+
+Before each run, contagent writes `.contagent/context.md` in the workspace describing the container's filesystem layout, and injects it into the agent's session:
+
+| Agent | Injection mechanism |
+|-------|---------------------|
+| Claude Code | `--append-system-prompt-file /workspace/.contagent/context.md` |
+| OpenCode | Added to the `instructions` array in `opencode.json` |
+| Cursor | Embedded in `.cursor/rules/contagent.mdc` (`alwaysApply: true`) |
+
+The context file lists every mounted path the agent can see, with host↔container mappings and access modes. It also explains how to request additional mounts (via `.contagent/mounts`) and, for CVMFS variants, which modules are loaded.
+
+**Claude Code** additionally receives two skills installed into the container home on first run (upgraded automatically when the skill version changes):
+
+- `add-mount` — guides Claude to propose and write a new `.contagent/mounts` entry with user consent
+- `contagent-status` — invokable as `/contagent-status`; summarises current mounts, modules, and how to expand access
+
+`.cursor/rules/contagent.mdc` is automatically added to `.gitignore` so it is not committed.
 
 ---
 
@@ -151,6 +173,7 @@ bash tests/test-common-lmod.sh
 bash tests/test-contagent-settings.sh
 bash tests/test-wrapper-preflight.sh
 bash tests/test-credential-cleanup.sh
+bash tests/test-context-generation.sh
 ```
 
 | File | What it covers |
@@ -161,3 +184,4 @@ bash tests/test-credential-cleanup.sh
 | `tests/test-contagent-settings.sh` | `read_setting`, `set_setting`, `check_home_dir` |
 | `tests/test-wrapper-preflight.sh` | Pre-flight checks for all 12 wrapper scripts |
 | `tests/test-credential-cleanup.sh` | Credential stripping from workspace state dir on exit |
+| `tests/test-context-generation.sh` | `generate_context_file`, `generate_opencode_config`, `install_cursor_rules`, `install_claude_skills` |

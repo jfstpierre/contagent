@@ -4,8 +4,11 @@
 
 set -e
 
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # shellcheck source=lib/common.sh
-source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/lib/common.sh"
+source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/context.sh
+source "${SCRIPT_DIR}/lib/context.sh"
 
 # Configuration
 IMAGE_NAME="docklaude"
@@ -69,6 +72,10 @@ EXTRA_BIND_ARGS=()
 init_mounts_file "${WORKSPACE}"
 parse_mounts_docker "${WORKSPACE}" EXTRA_BIND_ARGS
 
+# Generate container context file and install Claude skills
+generate_context_file "${WORKSPACE}" "docklaude"
+install_claude_skills "${CONTAINER_HOME}"
+
 # Run the container with:
 # - Read-write mount of workspace
 # - Full per-workspace home (persistent non-sensitive state)
@@ -88,4 +95,5 @@ docker run --rm -it --init \
     -e HOME=/home/claude \
     --workdir /workspace \
     "${IMAGE_NAME}" \
+    --append-system-prompt-file /workspace/.contagent/context.md \
     "$@"

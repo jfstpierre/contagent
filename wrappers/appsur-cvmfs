@@ -10,6 +10,8 @@ set -e
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/context.sh
+source "${SCRIPT_DIR}/lib/context.sh"
 SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer-cvmfs.sif"
 
 # Get absolute path of workspace (current directory)
@@ -81,6 +83,10 @@ BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
 # Parse .contagent/mounts for extra bind mounts
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" BIND_ARGS
+
+# Generate container context file and install Cursor rules
+generate_context_file "${WORKSPACE}" "appsur-cvmfs" "${APPSUR_DIR}/modules"
+install_cursor_rules "${WORKSPACE}" "${WORKSPACE}/.contagent/context.md"
 
 # Propagate PATH with cursor-agent's install dir prepended.
 # Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so startup

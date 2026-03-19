@@ -8,6 +8,8 @@ set -e
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/context.sh
+source "${SCRIPT_DIR}/lib/context.sh"
 SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer.sif"
 
 # Get absolute path of workspace (current directory)
@@ -75,6 +77,10 @@ EXTRA_BIND_ARGS=()
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
 
+# Generate container context file and install Claude skills
+generate_context_file "${WORKSPACE}" "applaude"
+install_claude_skills "${CONTAINER_HOME}"
+
 # Ensure claude's install dir is on PATH inside the container.
 # Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so claude's
 # startup check doesn't warn about ~/.local/bin not being in PATH.
@@ -91,4 +97,5 @@ apptainer run \
     "${EXTRA_BIND_ARGS[@]}" \
     --workdir /workspace \
     "${SIF_IMAGE}" \
+    --append-system-prompt-file /workspace/.contagent/context.md \
     "$@"

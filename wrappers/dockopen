@@ -4,8 +4,11 @@
 
 set -e
 
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # shellcheck source=lib/common.sh
-source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/lib/common.sh"
+source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/context.sh
+source "${SCRIPT_DIR}/lib/context.sh"
 
 # Configuration
 IMAGE_NAME="docklaude"
@@ -64,6 +67,10 @@ fi
 EXTRA_BIND_ARGS=()
 init_mounts_file "${WORKSPACE}"
 parse_mounts_docker "${WORKSPACE}" EXTRA_BIND_ARGS
+
+# Generate container context file and inject into OpenCode config
+generate_context_file "${WORKSPACE}" "dockopen"
+generate_opencode_config "${CRED_DIR}" "${WORKSPACE}"
 
 # Run opencode with:
 # --entrypoint: override image default to run opencode

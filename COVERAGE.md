@@ -51,10 +51,14 @@ These are created by contagent wrappers to isolate tool state from the host. All
 | `.contagent/dockbash/home/` | `dockbash` (Docker) | Isolated home directory for interactive shell sessions |
 | `.contagent/appbash/home/` | `appbash`, `appbash-cvmfs` (Apptainer) | Isolated home directory for interactive shell sessions |
 | `.contagent/mounts` | all variants | Optional extra bind mounts file (`host_path:container_path[:mode]`) |
+| `.contagent/context.md` | all agent variants | Auto-generated per-run file describing the container's filesystem layout, injected into the agent session |
+| `.cursor/rules/contagent.mdc` | `appsur`, `appsur-cvmfs`, `docksur` | Auto-generated Cursor rules file embedding `context.md`; added to `.gitignore` automatically |
 
 The per-tool `home/` directories contain a copy of the tool's global state scoped to the workspace. Credentials are **copied** from the host on first run; the host files are never modified.
 
 For Claude Code, the container also carries `~/.local/share/claude/versions/` (the Claude Code binary) but **not** `~/.local/state/claude/locks/` — lock files remain on the host only.
+
+On first run (and on skill version bumps), contagent installs skills into the Claude Code container home at `.contagent/applaude/home/.claude/skills/` (Apptainer) or `.contagent/docklaude/home/.claude/skills/` (Docker). These provide Claude with structured vocabulary for requesting container changes (`add-mount`, `contagent-status`).
 
 ---
 
@@ -102,6 +106,7 @@ User-level rules are configured via **Cursor Settings → Rules** (stored inside
 - Project state lives in `.cursor/` — safe to bind-mount with the workspace.
 - The full app data directory is large (extensions, cache); only the CLI config and auth file need to be copied/mounted.
 - `~/.local/share/` and `~/.local/state/` usage is not explicitly documented by Cursor; requires verification on a live installation.
+- contagent generates `.cursor/rules/contagent.mdc` before each run (embedding `context.md`) and appends an entry to `.gitignore` so the file is not committed.
 
 ---
 
@@ -177,6 +182,7 @@ Paths follow the XDG Base Directory specification. Override with:
 - `~/.opencode/` is the plugin install tree. On first run inside the container it will be re-created inside the container home if plugins are used.
 - Project state lives in `.opencode/` — safe to bind-mount with the workspace.
 - `AGENTS.md` is shared with Cursor; both tools read it as project-level instructions.
+- contagent injects `/workspace/.contagent/context.md` into the `instructions` array of `opencode.json` (idempotent) before each run, so OpenCode receives the container environment description as a system instruction.
 
 ---
 

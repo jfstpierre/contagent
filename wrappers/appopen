@@ -8,6 +8,8 @@ set -e
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/context.sh
+source "${SCRIPT_DIR}/lib/context.sh"
 SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer.sif"
 
 # Get absolute path of workspace (current directory)
@@ -59,6 +61,10 @@ chmod 600 "${MERGED_HOME}/.local/share/opencode/auth.json"
 if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ]; then
   cp "${HOST_OPENCODE_CONFIG}/opencode.json" "${MERGED_HOME}/.config/opencode/opencode.json"
 fi
+
+# Inject context.md into the OpenCode config
+generate_context_file "${WORKSPACE}" "appopen"
+generate_opencode_config "${MERGED_HOME}" "${WORKSPACE}"
 
 _contagent_cleanup() {
   cp -a "${MERGED_HOME}/." "${CONTAINER_HOME}/" 2>/dev/null || true
