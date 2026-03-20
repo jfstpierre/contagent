@@ -137,6 +137,77 @@ The CVMFS variants also bind `/cvmfs:/cvmfs` into the container and propagate th
 
 ---
 
+## SSH key access
+
+Contagent can forward an SSH agent into the container so agents can push to
+private repos or authenticate against remote hosts — without exposing your
+private keys.
+
+**Private keys never enter the container.** An isolated per-workspace
+`ssh-agent` is started on the host with only the approved key(s) loaded; the
+container only receives the agent socket.
+
+### Setup
+
+1. **First launch** — contagent automatically asks which SSH key file(s) to
+   allow and saves the answer to `.contagent/ssh-allowed-keys`:
+
+   ```
+   Setting up SSH key access for this workspace.
+   To push/fetch from private repos inside the container, enter the SSH private
+   key file path(s) you want to allow. Leave blank and press Enter to skip.
+
+   Keys currently in your SSH agent:
+     256 SHA256:xxxx /home/user/.ssh/id_grappes_githubcq (ED25519)
+
+   Enter key file path(s), one per line. Press Enter on a blank line when done.
+   Type 'none' to disable SSH forwarding for this workspace.
+
+     Key path: ~/.ssh/id_grappes_githubcq
+     Key path:
+   Saved 1 key path(s) to .contagent/ssh-allowed-keys.
+   ```
+
+2. **Subsequent launches** — the saved key list is reused automatically.
+
+3. **Inside the container** — `SSH_AUTH_SOCK` is set; test with:
+
+   ```bash
+   ssh -T git@github.com
+   ```
+
+### Key file format
+
+`.contagent/ssh-allowed-keys` contains one key file path per line.
+Tilde (`~`) is expanded. Lines starting with `#` are ignored.
+
+```
+# Allow only the cluster GitHub key
+~/.ssh/id_grappes_githubcq
+```
+
+If the file is empty, SSH forwarding is silently skipped for that session.
+
+### Passphrase-protected keys
+
+If a key has a passphrase and it is not already loaded in a running
+`ssh-agent` on the host, run:
+
+```bash
+ssh-add ~/.ssh/id_yourkey   # enter passphrase once
+```
+
+Then launch contagent; the key will be added to the per-workspace agent
+without prompting again.
+
+### Adding keys from inside the container
+
+If an agent needs an additional key, it must **ask user permission first**
+before editing `.contagent/ssh-allowed-keys`. Editing the file alone is not
+sufficient — a contagent restart is required for changes to take effect.
+
+---
+
 ## Common behaviour
 
 All variants:
@@ -185,3 +256,4 @@ bash tests/test-context-generation.sh
 | `tests/test-wrapper-preflight.sh` | Pre-flight checks for all 12 wrapper scripts |
 | `tests/test-credential-cleanup.sh` | Credential stripping from workspace state dir on exit |
 | `tests/test-context-generation.sh` | `generate_context_file`, `generate_opencode_config`, `install_cursor_rules`, `install_claude_skills` |
+| `tests/test-ssh-agent.sh` | `forward_ssh_agent_apptainer`, `forward_ssh_agent_docker`, `_start_workspace_ssh_agent`, `contagent_ssh_agent_cleanup` |

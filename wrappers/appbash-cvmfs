@@ -33,6 +33,8 @@ BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
 # Parse .contagent/mounts for extra bind mounts
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" BIND_ARGS
+forward_ssh_agent_apptainer "${WORKSPACE}" BIND_ARGS
+trap 'contagent_ssh_agent_cleanup' EXIT
 
 export APPTAINERENV_PATH="/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
 

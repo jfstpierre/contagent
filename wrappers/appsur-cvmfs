@@ -65,6 +65,7 @@ _contagent_cleanup() {
   rm -f "${CONTAINER_HOME}/.config/cursor/auth.json" \
         "${CONTAINER_HOME}/.cursor/cli-config.json"
   rm -rf "${MERGED_HOME}"
+  contagent_ssh_agent_cleanup
 }
 trap '_contagent_cleanup' EXIT
 trap 'exit 130' INT
@@ -83,6 +84,7 @@ BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
 # Parse .contagent/mounts for extra bind mounts
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" BIND_ARGS
+forward_ssh_agent_apptainer "${WORKSPACE}" BIND_ARGS
 
 # Generate container context file and install Cursor rules
 generate_context_file "${WORKSPACE}" "appsur-cvmfs" "${APPSUR_DIR}/modules"

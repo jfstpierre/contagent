@@ -71,6 +71,7 @@ _contagent_cleanup() {
   rm -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" \
         "${CONTAINER_HOME}/.config/opencode/opencode.json"
   rm -rf "${MERGED_HOME}"
+  contagent_ssh_agent_cleanup
 }
 trap '_contagent_cleanup' EXIT
 trap 'exit 130' INT
@@ -83,6 +84,7 @@ load_apptainer_module
 EXTRA_BIND_ARGS=()
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
+forward_ssh_agent_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
 
 export APPTAINERENV_PATH="/root/.opencode/bin:/root/.local/bin:${MERGED_HOME}/.local/bin:${PATH}"
 

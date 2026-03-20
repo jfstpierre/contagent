@@ -29,6 +29,8 @@ fi
 EXTRA_BIND_ARGS=()
 init_mounts_file "${WORKSPACE}"
 parse_mounts_docker "${WORKSPACE}" EXTRA_BIND_ARGS
+forward_ssh_agent_docker "${WORKSPACE}" EXTRA_BIND_ARGS
+trap 'contagent_ssh_agent_cleanup' EXIT
 
 # Run bash with:
 # --entrypoint: override image default to run bash

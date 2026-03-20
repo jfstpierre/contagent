@@ -123,6 +123,157 @@ parse_mounts_docker() {
   fi
 }
 
+# Interactively prompt the user to select SSH key file paths to allow in this workspace.
+# Creates (or truncates) <allowed_keys_file> with the user's choices.
+# Usage: _prompt_ssh_allowed_keys <allowed_keys_file>
+_prompt_ssh_allowed_keys() {
+  local allowed_keys_file="$1"
+  mkdir -p "$(dirname "${allowed_keys_file}")"
+
+  echo ""
+  echo "Setting up SSH key access for this workspace."
+  echo "To push/fetch from private repos inside the container, enter the SSH private"
+  echo "key file path(s) you want to allow. Leave blank and press Enter to skip."
+  echo ""
+
+  # Show keys currently loaded in the host agent as a reference
+  if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "${SSH_AUTH_SOCK}" ]; then
+    local _al
+    if _al="$(ssh-add -l 2>/dev/null)"; then
+      echo "Keys currently in your SSH agent:"
+      printf '%s\n' "${_al}" | sed 's/^/  /'
+      echo ""
+    fi
+  fi
+
+  echo "Enter key file path(s), one per line. Press Enter on a blank line when done."
+  echo "Type 'none' to disable SSH forwarding for this workspace."
+  echo ""
+
+  : > "${allowed_keys_file}"
+  local _line _count=0
+  while IFS= read -r -p "  Key path: " _line; do
+    _line="${_line#"${_line%%[![:space:]]*}"}"   # ltrim
+    _line="${_line%"${_line##*[![:space:]]}"}"   # rtrim
+    [ -z "${_line}" ] && break
+    if [ "${_line}" = "none" ]; then
+      _count=0; break
+    fi
+    printf '%s\n' "${_line}" >> "${allowed_keys_file}"
+    _count=$((_count + 1))
+  done
+
+  if [ "${_count}" -gt 0 ]; then
+    echo ""
+    echo "Saved ${_count} key path(s) to .contagent/ssh-allowed-keys."
+  else
+    : > "${allowed_keys_file}"   # ensure file exists but is empty (= disabled)
+    echo ""
+    echo "No keys specified. SSH forwarding disabled for this workspace."
+  fi
+  echo ""
+}
+
+# Start an isolated per-workspace ssh-agent loaded with only the allowed key files.
+# On success: exports SSH_AUTH_SOCK, SSH_AGENT_PID; sets _CONTAGENT_SSH_AGENT_PID.
+# Returns 0 when the agent is running with ≥1 key, 1 otherwise.
+# Usage: _start_workspace_ssh_agent <workspace>
+_start_workspace_ssh_agent() {
+  local workspace="$1"
+  local allowed_keys_file="${workspace}/.contagent/ssh-allowed-keys"
+
+  [ -f "${allowed_keys_file}" ] || return 1
+
+  # Skip if file has no actionable entries
+  local _has=0 _l
+  while IFS= read -r _l || [ -n "${_l}" ]; do
+    [[ -z "${_l}" || "${_l}" =~ ^[[:space:]]*# ]] && continue
+    _has=1; break
+  done < "${allowed_keys_file}"
+  [ "${_has}" -eq 0 ] && return 1
+
+  # Launch an isolated ssh-agent
+  local _aenv
+  _aenv="$(ssh-agent -s 2>/dev/null)" || {
+    echo "Warning: ssh-agent unavailable; SSH forwarding disabled."
+    return 1
+  }
+  eval "${_aenv}" >/dev/null
+  export SSH_AUTH_SOCK SSH_AGENT_PID
+  _CONTAGENT_SSH_AGENT_PID="${SSH_AGENT_PID}"
+
+  # Add each allowed key to the workspace agent
+  local _key _exp _added=0
+  while IFS= read -r _key || [ -n "${_key}" ]; do
+    [[ -z "${_key}" || "${_key}" =~ ^[[:space:]]*# ]] && continue
+    _exp="${_key/#\~/$HOME}"
+    if [ ! -f "${_exp}" ]; then
+      echo "Warning: SSH key file not found: ${_exp} (skipping)"
+      continue
+    fi
+    if ssh-add "${_exp}" 2>/dev/null; then
+      _added=$((_added + 1))
+    else
+      echo "Warning: could not add SSH key: ${_exp}"
+      echo "  If the key has a passphrase, run 'ssh-add ${_exp}' first, then retry."
+    fi
+  done < "${allowed_keys_file}"
+
+  if [ "${_added}" -eq 0 ]; then
+    echo "Warning: no SSH keys were loaded; disabling SSH forwarding for this session."
+    kill "${_CONTAGENT_SSH_AGENT_PID}" 2>/dev/null || true
+    _CONTAGENT_SSH_AGENT_PID=""
+    return 1
+  fi
+
+  return 0
+}
+
+# Kill the per-workspace ssh-agent if one is running.
+# Safe to call unconditionally (no-op if no agent was started).
+contagent_ssh_agent_cleanup() {
+  if [ -n "${_CONTAGENT_SSH_AGENT_PID:-}" ]; then
+    kill "${_CONTAGENT_SSH_AGENT_PID}" 2>/dev/null || true
+    _CONTAGENT_SSH_AGENT_PID=""
+  fi
+}
+
+# Append --bind args for SSH agent forwarding to an Apptainer args array.
+# On first use (no ssh-allowed-keys file yet) prompts the user to select keys.
+# Starts an isolated per-workspace agent with only the approved keys.
+# Usage: forward_ssh_agent_apptainer <workspace> <array_name>
+forward_ssh_agent_apptainer() {
+  local workspace="$1"
+  local -n _fwdssa_arr="$2"
+
+  local _akeys="${workspace}/.contagent/ssh-allowed-keys"
+  [ -f "${_akeys}" ] || _prompt_ssh_allowed_keys "${_akeys}"
+
+  _start_workspace_ssh_agent "${workspace}" || return 0
+
+  # SSH_AUTH_SOCK now points to the isolated workspace agent.
+  # Apptainer inherits env vars automatically; only the bind mount is needed.
+  _fwdssa_arr+=("--bind" "${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}")
+}
+
+# Append -v/-e args for SSH agent forwarding to a Docker args array.
+# On first use (no ssh-allowed-keys file yet) prompts the user to select keys.
+# Starts an isolated per-workspace agent with only the approved keys.
+# Usage: forward_ssh_agent_docker <workspace> <array_name>
+forward_ssh_agent_docker() {
+  local workspace="$1"
+  local -n _fwdssad_arr="$2"
+
+  local _akeys="${workspace}/.contagent/ssh-allowed-keys"
+  [ -f "${_akeys}" ] || _prompt_ssh_allowed_keys "${_akeys}"
+
+  _start_workspace_ssh_agent "${workspace}" || return 0
+
+  # Docker does not inherit host env; pass the socket path explicitly.
+  _fwdssad_arr+=("-v" "${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}")
+  _fwdssad_arr+=("-e" "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}")
+}
+
 # Print LOADEDMODULES (colon-separated) as one module per line.
 get_loaded_modules() {
   echo "${LOADEDMODULES:-}" | tr ':' '\n' | grep -v '^$'

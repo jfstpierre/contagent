@@ -30,6 +30,8 @@ load_apptainer_module
 EXTRA_BIND_ARGS=()
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
+forward_ssh_agent_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
+trap 'contagent_ssh_agent_cleanup' EXIT
 
 export APPTAINERENV_PATH="/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
 

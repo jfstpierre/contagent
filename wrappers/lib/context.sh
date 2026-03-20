@@ -58,6 +58,25 @@ Edit `/workspace/.contagent/mounts` and add a line:
 **Ask the user before modifying this file. A session restart is required.**
 EOF
 
+    # Note SSH agent forwarding if active
+    if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "${SSH_AUTH_SOCK}" ]; then
+      cat << 'EOF'
+
+## SSH Agent
+An SSH agent is forwarded into this container (`SSH_AUTH_SOCK` is set). Only
+the specific keys listed in `.contagent/ssh-allowed-keys` are loaded — private
+keys never enter the container.
+
+You can perform authenticated git operations (push, fetch from private repos)
+using these pre-approved keys.
+
+**IMPORTANT:** Do NOT modify `.contagent/ssh-allowed-keys` without explicit
+user permission. If you need access to an additional key, ask the user first
+and explain why — only edit the file after they confirm. A contagent restart is
+required for changes to take effect.
+EOF
+    fi
+
     if [ -n "${modules_file}" ] && [ -f "${modules_file}" ]; then
       local loaded_modules
       loaded_modules="$(grep -v '^[[:space:]]*#' "${modules_file}" \

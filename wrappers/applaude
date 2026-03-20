@@ -58,6 +58,7 @@ _contagent_cleanup() {
   cp -a "${MERGED_HOME}/." "${CONTAINER_HOME}/" 2>/dev/null || true
   rm -f "${CONTAINER_HOME}/.claude/.credentials.json" "${CONTAINER_HOME}/.claude.json"
   rm -rf "${MERGED_HOME}"
+  contagent_ssh_agent_cleanup
 }
 trap '_contagent_cleanup' EXIT
 trap 'exit 130' INT
@@ -76,6 +77,7 @@ load_apptainer_module
 EXTRA_BIND_ARGS=()
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
+forward_ssh_agent_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
 
 # Generate container context file and install Claude skills
 generate_context_file "${WORKSPACE}" "applaude"

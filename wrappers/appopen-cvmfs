@@ -73,6 +73,7 @@ _contagent_cleanup() {
   rm -f "${CONTAINER_HOME}/.local/share/opencode/auth.json" \
         "${CONTAINER_HOME}/.config/opencode/opencode.json"
   rm -rf "${MERGED_HOME}"
+  contagent_ssh_agent_cleanup
 }
 trap '_contagent_cleanup' EXIT
 trap 'exit 130' INT
@@ -91,6 +92,7 @@ BIND_ARGS=("--bind" "${WORKSPACE}:/workspace")
 # Parse .contagent/mounts for extra bind mounts
 init_mounts_file "${WORKSPACE}"
 parse_mounts_apptainer "${WORKSPACE}" BIND_ARGS
+forward_ssh_agent_apptainer "${WORKSPACE}" BIND_ARGS
 
 # Propagate PATH with opencode's install dir prepended.
 # Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so startup
