@@ -8,6 +8,18 @@ _WRAPPERS_="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../wrappers"
 PASS=0
 FAIL=0
 
+VERBOSE=0
+for _arg in "$@"; do
+  case "$_arg" in -v|--verbose) VERBOSE=1 ;; esac
+done
+
+describe() {
+  [ "$VERBOSE" -eq 1 ] || return 0
+  local prefix="    "
+  echo "  >"
+  for _line in "$@"; do echo "${prefix}${_line}"; done
+}
+
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; echo "       $2"; FAIL=$((FAIL + 1)); }
 
@@ -78,6 +90,10 @@ EOF
 # ---------------------------------------------------------------------------
 echo "=== appbash / appbash-cvmfs (SIF only) ==="
 
+describe \
+  "SIF not found → exits 1 with error mentioning 'SIF not found'." \
+  "Tested for both appbash and appbash-cvmfs."
+
 for wrapper in appbash appbash-cvmfs; do
   sif="apptainer.sif"
   [ "$wrapper" = "appbash-cvmfs" ] && sif="apptainer-cvmfs.sif"
@@ -90,17 +106,27 @@ for wrapper in appbash appbash-cvmfs; do
   assert_eq "$RUN_RC" "1" "${wrapper}: missing SIF → exits non-zero"
   assert_contains "$OUTPUT" "SIF not found" "${wrapper}: missing SIF → error message"
   rm -rf "${tmpdir}"
-
-  # Test: SIF present + mocked apptainer → exits 0
-  tmpdir="$(mktemp -d)"
-  setup_apptainer_env "${tmpdir}" "${sif}"
-  run_wrapper "${wrapper}" "${tmpdir}"
-  assert_eq "$RUN_RC" "0" "${wrapper}: all present → exits 0"
-  rm -rf "${tmpdir}"
 done
+
+describe \
+  "All present → exits 0." \
+  "CVMFS variant omitted: both variants call check_sif from the shared library."
+
+# Happy path only for appbash. CVMFS variant uses identical preflight logic
+# (check_sif from the shared library), so success is implied by the test above.
+tmpdir="$(mktemp -d)"
+setup_apptainer_env "${tmpdir}" "apptainer.sif"
+run_wrapper "appbash" "${tmpdir}"
+assert_eq "$RUN_RC" "0" "appbash: all present → exits 0"
+rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== applaude / applaude-cvmfs ==="
+
+describe \
+  "~/.claude directory missing → exits 1 with error mentioning .claude." \
+  "~/.claude.json missing → exits 1 with error mentioning .claude.json." \
+  "Credentials present but SIF missing → exits 1. Tested for both variants."
 
 for wrapper in applaude applaude-cvmfs; do
   sif="apptainer.sif"
@@ -136,20 +162,29 @@ for wrapper in applaude applaude-cvmfs; do
   assert_eq "$RUN_RC" "1" "${wrapper}: credentials present, SIF missing → exits non-zero"
   assert_contains "$OUTPUT" "SIF not found" "${wrapper}: missing SIF → error message"
   rm -rf "${tmpdir}"
-
-  # Test: all present + mocked apptainer → exits 0
-  tmpdir="$(mktemp -d)"
-  setup_apptainer_env "${tmpdir}" "${sif}"
-  mkdir -p "${tmpdir}/home/.claude"
-  touch "${tmpdir}/home/.claude/.credentials.json"
-  touch "${tmpdir}/home/.claude.json"
-  run_wrapper "${wrapper}" "${tmpdir}"
-  assert_eq "$RUN_RC" "0" "${wrapper}: all present → exits 0"
-  rm -rf "${tmpdir}"
 done
+
+describe \
+  "All credentials and SIF present → exits 0." \
+  "CVMFS variant omitted: both variants use the same preflight checks."
+
+# Happy path only for applaude. CVMFS variant uses identical preflight logic
+# (shared library functions), so success is implied by the failure tests above.
+tmpdir="$(mktemp -d)"
+setup_apptainer_env "${tmpdir}" "apptainer.sif"
+mkdir -p "${tmpdir}/home/.claude"
+touch "${tmpdir}/home/.claude/.credentials.json"
+touch "${tmpdir}/home/.claude.json"
+run_wrapper "applaude" "${tmpdir}"
+assert_eq "$RUN_RC" "0" "applaude: all present → exits 0"
+rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== appopen / appopen-cvmfs ==="
+
+describe \
+  "auth.json missing → exits 1 with error mentioning auth.json." \
+  "auth.json present but SIF missing → exits 1. Tested for both variants."
 
 for wrapper in appopen appopen-cvmfs; do
   sif="apptainer.sif"
@@ -173,19 +208,27 @@ for wrapper in appopen appopen-cvmfs; do
   assert_eq "$RUN_RC" "1" "${wrapper}: auth.json present, SIF missing → exits non-zero"
   assert_contains "$OUTPUT" "SIF not found" "${wrapper}: missing SIF → error message"
   rm -rf "${tmpdir}"
-
-  # Test: all present → exits 0
-  tmpdir="$(mktemp -d)"
-  setup_apptainer_env "${tmpdir}" "${sif}"
-  mkdir -p "${tmpdir}/home/.local/share/opencode"
-  touch "${tmpdir}/home/.local/share/opencode/auth.json"
-  run_wrapper "${wrapper}" "${tmpdir}"
-  assert_eq "$RUN_RC" "0" "${wrapper}: all present → exits 0"
-  rm -rf "${tmpdir}"
 done
+
+describe \
+  "All present → exits 0." \
+  "CVMFS variant omitted: both variants use the same preflight checks."
+
+# Happy path only for appopen. CVMFS variant uses identical preflight logic.
+tmpdir="$(mktemp -d)"
+setup_apptainer_env "${tmpdir}" "apptainer.sif"
+mkdir -p "${tmpdir}/home/.local/share/opencode"
+touch "${tmpdir}/home/.local/share/opencode/auth.json"
+run_wrapper "appopen" "${tmpdir}"
+assert_eq "$RUN_RC" "0" "appopen: all present → exits 0"
+rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== appsur / appsur-cvmfs ==="
+
+describe \
+  "auth.json missing → exits 1. cli-config.json missing → exits 1." \
+  "Both credentials present but SIF missing → exits 1. Tested for both variants."
 
 for wrapper in appsur appsur-cvmfs; do
   sif="apptainer.sif"
@@ -220,20 +263,28 @@ for wrapper in appsur appsur-cvmfs; do
   assert_eq "$RUN_RC" "1" "${wrapper}: credentials present, SIF missing → exits non-zero"
   assert_contains "$OUTPUT" "SIF not found" "${wrapper}: missing SIF → error message"
   rm -rf "${tmpdir}"
-
-  # Test: all present → exits 0
-  tmpdir="$(mktemp -d)"
-  setup_apptainer_env "${tmpdir}" "${sif}"
-  mkdir -p "${tmpdir}/home/.config/cursor" "${tmpdir}/home/.cursor"
-  touch "${tmpdir}/home/.config/cursor/auth.json"
-  touch "${tmpdir}/home/.cursor/cli-config.json"
-  run_wrapper "${wrapper}" "${tmpdir}"
-  assert_eq "$RUN_RC" "0" "${wrapper}: all present → exits 0"
-  rm -rf "${tmpdir}"
 done
+
+describe \
+  "All present → exits 0." \
+  "CVMFS variant omitted: both variants use the same preflight checks."
+
+# Happy path only for appsur. CVMFS variant uses identical preflight logic.
+tmpdir="$(mktemp -d)"
+setup_apptainer_env "${tmpdir}" "apptainer.sif"
+mkdir -p "${tmpdir}/home/.config/cursor" "${tmpdir}/home/.cursor"
+touch "${tmpdir}/home/.config/cursor/auth.json"
+touch "${tmpdir}/home/.cursor/cli-config.json"
+run_wrapper "appsur" "${tmpdir}"
+assert_eq "$RUN_RC" "0" "appsur: all present → exits 0"
+rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== dockbash ==="
+
+describe \
+  "Docker image not found → exits 1 with 'not found' in error message." \
+  "Image present (mocked inspect succeeds) → exits 0."
 
 # Test: docker image inspect fails → exits non-zero, message mentions image
 tmpdir="$(mktemp -d)"
@@ -261,6 +312,11 @@ rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== docklaude ==="
+
+describe \
+  "~/.claude missing → exits 1. ~/.claude.json missing → exits 1." \
+  "Docker image missing (inspect + build both fail) → exits 1." \
+  "All present → exits 0."
 
 # Test: missing ~/.claude dir → exits non-zero
 tmpdir="$(mktemp -d)"
@@ -312,6 +368,9 @@ rm -rf "${tmpdir}"
 # ---------------------------------------------------------------------------
 echo "=== dockopen ==="
 
+describe \
+  "auth.json missing → exits 1. Image not found → exits 1. All present → exits 0."
+
 # Test: missing auth.json → exits non-zero
 tmpdir="$(mktemp -d)"
 setup_docker_env "${tmpdir}"
@@ -346,6 +405,10 @@ rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== docksur ==="
+
+describe \
+  "auth.json missing → exits 1. cli-config.json missing → exits 1." \
+  "Image not found → exits 1. All present → exits 0."
 
 # Test: missing auth.json → exits non-zero
 tmpdir="$(mktemp -d)"

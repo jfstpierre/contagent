@@ -7,6 +7,18 @@ _CONTAGENT_="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../contagent"
 PASS=0
 FAIL=0
 
+VERBOSE=0
+for _arg in "$@"; do
+  case "$_arg" in -v|--verbose) VERBOSE=1 ;; esac
+done
+
+describe() {
+  [ "$VERBOSE" -eq 1 ] || return 0
+  local prefix="    "
+  echo "  >"
+  for _line in "$@"; do echo "${prefix}${_line}"; done
+}
+
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; echo "       $2"; FAIL=$((FAIL + 1)); }
 
@@ -44,6 +56,9 @@ _load_contagent() {
 # ---------------------------------------------------------------------------
 echo "=== read_setting / set_setting ==="
 
+describe \
+  "read_setting returns the value for an existing key."
+
 # Test 1: read_setting returns value for existing key
 tmpdir="$(mktemp -d)"
 (
@@ -54,6 +69,9 @@ tmpdir="$(mktemp -d)"
 ) && ok "read_setting returns value for existing key" \
   || fail "read_setting returns value for existing key" "unexpected value"
 rm -rf "${tmpdir}"
+
+describe \
+  "read_setting returns empty string for a key not in the settings file."
 
 # Test 2: read_setting returns empty for missing key
 tmpdir="$(mktemp -d)"
@@ -66,6 +84,9 @@ tmpdir="$(mktemp -d)"
   || fail "read_setting returns empty for missing key" "non-empty value returned"
 rm -rf "${tmpdir}"
 
+describe \
+  "read_setting handles multiple keys in the same file without cross-contamination."
+
 # Test 3: read_setting handles multiple keys correctly
 tmpdir="$(mktemp -d)"
 (
@@ -75,6 +96,9 @@ tmpdir="$(mktemp -d)"
 ) && ok "read_setting handles multiple keys" \
   || fail "read_setting handles multiple keys" "wrong value"
 rm -rf "${tmpdir}"
+
+describe \
+  "set_setting creates a new key when it does not exist in the settings file."
 
 # Test 4: set_setting creates new key
 tmpdir="$(mktemp -d)"
@@ -87,6 +111,9 @@ tmpdir="$(mktemp -d)"
   || fail "set_setting creates new key" "key not found or wrong value"
 rm -rf "${tmpdir}"
 
+describe \
+  "set_setting updates an existing key in-place."
+
 # Test 5: set_setting updates existing key
 tmpdir="$(mktemp -d)"
 (
@@ -98,6 +125,9 @@ tmpdir="$(mktemp -d)"
   || fail "set_setting updates existing key" "wrong value after update"
 rm -rf "${tmpdir}"
 
+describe \
+  "set_setting preserves other keys when updating a single one."
+
 # Test 6: set_setting preserves other keys
 tmpdir="$(mktemp -d)"
 (
@@ -108,6 +138,9 @@ tmpdir="$(mktemp -d)"
 ) && ok "set_setting preserves other keys" \
   || fail "set_setting preserves other keys" "other key was modified"
 rm -rf "${tmpdir}"
+
+describe \
+  "set_setting creates CONTAGENT_DIR and the settings file if they do not exist."
 
 # Test 7: set_setting creates CONTAGENT_DIR if absent
 tmpdir="$(mktemp -d)"
@@ -125,6 +158,9 @@ rm -rf "${tmpdir}"
 # ---------------------------------------------------------------------------
 echo "=== check_home_dir ==="
 
+describe \
+  "Not in HOME → check_home_dir returns 0 with no output."
+
 # Test 8: not in HOME → returns 0, no output
 tmpdir="$(mktemp -d)"
 RC=0
@@ -137,6 +173,9 @@ STDOUT="$(
 assert_eq "$RC" "0" "not in HOME → returns 0"
 assert_eq "$STDOUT" "" "not in HOME → no output"
 rm -rf "${tmpdir}"
+
+describe \
+  "In HOME with HOME_WARN=disabled → check_home_dir returns 0 with no output."
 
 # Test 9: in HOME, HOME_WARN=disabled → returns 0, no output
 tmpdir="$(mktemp -d)"
@@ -151,6 +190,9 @@ assert_eq "$RC" "0" "HOME_WARN=disabled → returns 0"
 assert_eq "$STDOUT" "" "HOME_WARN=disabled → no output"
 rm -rf "${tmpdir}"
 
+describe \
+  "In HOME, user responds 'y' to the prompt → returns 0 and proceeds."
+
 # Test 10: in HOME, user says y → returns 0
 tmpdir="$(mktemp -d)"
 RC=0
@@ -162,6 +204,9 @@ RC=0
 ) >/dev/null 2>&1 || RC=$?
 assert_eq "$RC" "0" "user says y → returns 0"
 rm -rf "${tmpdir}"
+
+describe \
+  "In HOME, user responds 'n' to the prompt → exits 1 with 'Aborted' in output."
 
 # Test 11: in HOME, user says n → exits 1, "Aborted" in output
 tmpdir="$(mktemp -d)"
@@ -177,6 +222,9 @@ STDOUT="$(
 assert_eq "$RC" "1" "user says n → exits 1"
 assert_contains "$STDOUT" "Aborted" "user says n → 'Aborted' in output"
 rm -rf "${tmpdir}"
+
+describe \
+  "In HOME, user responds 'd' → sets HOME_WARN=disabled in settings and returns 0."
 
 # Test 12: in HOME, user says d → sets HOME_WARN=disabled, returns 0
 tmpdir="$(mktemp -d)"
@@ -194,6 +242,10 @@ WARN_VAL="$(
 )"
 assert_eq "$WARN_VAL" "disabled" "user says d → HOME_WARN=disabled in settings"
 rm -rf "${tmpdir}"
+
+describe \
+  "Invalid input is rejected; the prompt repeats until a valid answer is given." \
+  "Tests 'x' (invalid) then 'y' (valid) → returns 0."
 
 # Test 13: in HOME, invalid input then y → proceeds normally
 tmpdir="$(mktemp -d)"

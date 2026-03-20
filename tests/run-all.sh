@@ -8,7 +8,7 @@ FAIL=0
 
 for f in "$(dirname "$(realpath "${BASH_SOURCE[0]}")")"/test-*.sh; do
   echo "--- $(basename "$f") ---"
-  if bash "$f"; then
+  if bash "$f" "$@"; then
     PASS=$((PASS + 1))
   else
     FAIL=$((FAIL + 1))

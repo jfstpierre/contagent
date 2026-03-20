@@ -236,6 +236,13 @@ The test suite requires only bash — no Docker or Apptainer installation needed
 bash tests/run-all.sh
 ```
 
+Pass `--verbose` (or `-v`) to print a 2–3 line description of each test scenario:
+
+```bash
+bash tests/run-all.sh --verbose
+bash tests/test-context-generation.sh -v
+```
+
 Individual test files can be run directly:
 
 ```bash
@@ -254,6 +261,6 @@ bash tests/test-context-generation.sh
 | `tests/test-common-lmod.sh` | `ensure_module`, `load_apptainer_module`, `load_modules_from_file` |
 | `tests/test-contagent-settings.sh` | `read_setting`, `set_setting`, `check_home_dir` |
 | `tests/test-wrapper-preflight.sh` | Pre-flight checks for all 12 wrapper scripts |
-| `tests/test-credential-cleanup.sh` | Credential stripping from workspace state dir on exit |
+| `tests/test-credential-cleanup.sh` | Credential isolation for all Apptainer and Docker wrappers |
 | `tests/test-context-generation.sh` | `generate_context_file`, `generate_opencode_config`, `install_cursor_rules`, `install_claude_skills` |
 | `tests/test-ssh-agent.sh` | `forward_ssh_agent_apptainer`, `forward_ssh_agent_docker`, `_start_workspace_ssh_agent`, `contagent_ssh_agent_cleanup` |

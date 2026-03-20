@@ -7,6 +7,18 @@ _LIB_="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../wrappers/lib/common.sh"
 PASS=0
 FAIL=0
 
+VERBOSE=0
+for _arg in "$@"; do
+  case "$_arg" in -v|--verbose) VERBOSE=1 ;; esac
+done
+
+describe() {
+  [ "$VERBOSE" -eq 1 ] || return 0
+  local prefix="    "
+  echo "  >"
+  for _line in "$@"; do echo "${prefix}${_line}"; done
+}
+
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; echo "       $2"; FAIL=$((FAIL + 1)); }
 
@@ -31,6 +43,9 @@ assert_not_contains() {
 # ---------------------------------------------------------------------------
 echo "=== ensure_module ==="
 
+describe \
+  "module function available in the shell → ensure_module returns 0."
+
 # Test 1: module already available → returns 0
 RC="$(
   (
@@ -42,6 +57,9 @@ RC="$(
   ) >/dev/null 2>&1; echo $?
 )"
 assert_eq "$RC" "0" "module already available → returns 0"
+
+describe \
+  "module not in PATH and no lmod init files found → ensure_module returns 1."
 
 # Test 2: module unavailable, no lmod init found → returns 1
 # Override ensure_module to simulate the no-lmod path (the real function may
@@ -64,6 +82,9 @@ assert_eq "$RC" "1" "module unavailable, no lmod → returns 1"
 # ---------------------------------------------------------------------------
 echo "=== load_apptainer_module ==="
 
+describe \
+  "No settings file → load_apptainer_module makes no module calls."
+
 # Test 3: no settings file → no module calls
 tmpdir="$(mktemp -d)"
 MODULE_LOG="${tmpdir}/module.log"
@@ -79,6 +100,9 @@ MODULE_LOG="${tmpdir}/module.log"
 CALLS="$(cat "${MODULE_LOG}" 2>/dev/null || echo "")"
 assert_eq "$CALLS" "" "no settings file → no module calls"
 rm -rf "${tmpdir}"
+
+describe \
+  "Settings file present but APPTAINER_MODULE not set → no module calls."
 
 # Test 4: settings file, APPTAINER_MODULE not set → no module calls
 tmpdir="$(mktemp -d)"
@@ -97,6 +121,10 @@ CALLS="$(cat "${MODULE_LOG}" 2>/dev/null || echo "")"
 assert_eq "$CALLS" "" "settings file without APPTAINER_MODULE → no module calls"
 rm -rf "${tmpdir}"
 
+describe \
+  "APPTAINER_MODULE is set in the settings file and lmod is available." \
+  "Expects module load to be called with the configured module name."
+
 # Test 5: settings file with APPTAINER_MODULE, module available → module load called
 tmpdir="$(mktemp -d)"
 MODULE_LOG="${tmpdir}/module.log"
@@ -113,6 +141,9 @@ printf 'APPTAINER_MODULE=myapp/1.0\n' > "${tmpdir}/settings"
 CALLS="$(cat "${MODULE_LOG}" 2>/dev/null || echo "")"
 assert_contains "$CALLS" "module load myapp/1.0" "APPTAINER_MODULE set → module load called"
 rm -rf "${tmpdir}"
+
+describe \
+  "APPTAINER_MODULE is set but lmod is unavailable → warning printed, no module calls."
 
 # Test 6: settings file with APPTAINER_MODULE, lmod unavailable → warning printed
 tmpdir="$(mktemp -d)"
@@ -132,6 +163,9 @@ rm -rf "${tmpdir}"
 # ---------------------------------------------------------------------------
 echo "=== load_modules_from_file ==="
 
+describe \
+  "Normal modules file → module purge called, then module load for each entry."
+
 # Test 7: normal file → module purge + module load for each module
 tmpdir="$(mktemp -d)"
 MODULE_LOG="${tmpdir}/module.log"
@@ -150,6 +184,10 @@ assert_contains "$CALLS" "module load scipy-stack/2023b" "load_modules_from_file
 assert_contains "$CALLS" "module load python/3.11" "load_modules_from_file: second module loaded"
 rm -rf "${tmpdir}"
 
+describe \
+  "Modules file with comment lines and blank lines." \
+  "Only real module entries are loaded; comments and blanks are skipped."
+
 # Test 8: file with comments and blank lines → only real modules loaded
 tmpdir="$(mktemp -d)"
 MODULE_LOG="${tmpdir}/module.log"
@@ -166,6 +204,9 @@ CALLS="$(cat "${MODULE_LOG}" 2>/dev/null || echo "")"
 LOAD_COUNT="$(echo "$CALLS" | grep -c "^module load" || true)"
 assert_eq "$LOAD_COUNT" "1" "load_modules_from_file: comments/blanks skipped, one load call"
 rm -rf "${tmpdir}"
+
+describe \
+  "lmod unavailable → warning printed, no module commands run."
 
 # Test 9: lmod unavailable → warning printed, no module calls
 tmpdir="$(mktemp -d)"

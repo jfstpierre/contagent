@@ -7,6 +7,18 @@ _LIB_="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../wrappers/lib/common.sh"
 PASS=0
 FAIL=0
 
+VERBOSE=0
+for _arg in "$@"; do
+  case "$_arg" in -v|--verbose) VERBOSE=1 ;; esac
+done
+
+describe() {
+  [ "$VERBOSE" -eq 1 ] || return 0
+  local prefix="    "
+  echo "  >"
+  for _line in "$@"; do echo "${prefix}${_line}"; done
+}
+
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; echo "       $2"; FAIL=$((FAIL + 1)); }
 
@@ -31,6 +43,10 @@ assert_not_contains() {
 # ---------------------------------------------------------------------------
 echo "=== init_mounts_file ==="
 
+describe \
+  "init_mounts_file creates the file with a template header when it does not exist." \
+  "Prints a first-run notice to stdout on creation."
+
 tmpdir="$(mktemp -d)"
 (
   # shellcheck source=../wrappers/lib/common.sh
@@ -48,6 +64,10 @@ STDOUT="$(
   init_mounts_file "${tmpdir}/ws2"
 )"
 assert_contains "$STDOUT" "Note: .contagent/mounts created" "prints first-run notice to stdout"
+
+describe \
+  "init_mounts_file is a no-op when the file already exists." \
+  "Existing content is preserved and no first-run notice is printed."
 
 # Pre-create file with custom content
 mkdir -p "${tmpdir}/ws3/.contagent"
@@ -100,9 +120,15 @@ run_parse_apptainer() {
 _read_parse_result() { cat "${_PARSE_RESULT_FILE}"; }
 _read_parse_warn()   { cat "${_PARSE_WARN_FILE}"; }
 
+describe \
+  "Empty or comment-only mounts file → array unchanged (no --bind args added)."
+
 # Test 6: empty/comment-only file
 run_parse_apptainer "# just a comment"
 assert_eq "$(_read_parse_result)" "" "empty/comment-only file → array unchanged"
+
+describe \
+  "Valid entry with explicit ro mode → --bind added with correct path and mode."
 
 # Test 7: valid entry with explicit ro mode
 tmpdir_host="$(mktemp -d)"
@@ -111,17 +137,26 @@ assert_contains "$(_read_parse_result)" "--bind" "valid ro entry → --bind flag
 assert_contains "$(_read_parse_result)" "${tmpdir_host}:/container:ro" "valid ro entry → correct path and mode"
 rm -rf "${tmpdir_host}"
 
+describe \
+  "No mode specified → entry defaults to ro."
+
 # Test 8: valid entry without mode → defaults to ro
 tmpdir_host="$(mktemp -d)"
 run_parse_apptainer "${tmpdir_host}:/container"
 assert_contains "$(_read_parse_result)" "${tmpdir_host}:/container:ro" "no mode → defaults to ro"
 rm -rf "${tmpdir_host}"
 
+describe \
+  "rw mode is preserved as-is in the --bind argument."
+
 # Test 9: valid entry with rw mode
 tmpdir_host="$(mktemp -d)"
 run_parse_apptainer "${tmpdir_host}:/container:rw"
 assert_contains "$(_read_parse_result)" "${tmpdir_host}:/container:rw" "rw mode → rw preserved"
 rm -rf "${tmpdir_host}"
+
+describe \
+  "Tilde in host path is expanded using \$HOME."
 
 # Test 10: tilde expansion
 tmpdir2="$(mktemp -d)"
@@ -137,10 +172,16 @@ TILDE_RESULT="$(
 assert_contains "$TILDE_RESULT" "${tmpdir2}/foo:/bar:ro" "tilde expansion resolves to HOME/foo"
 rm -rf "${tmpdir2}"
 
+describe \
+  "Non-existent host path → entry skipped and a warning is printed."
+
 # Test 11: non-existent host path → warning + skipped
 run_parse_apptainer "/nonexistent-path-xyzzy-test:/container:ro"
 assert_eq "$(_read_parse_result)" "" "non-existent host path → entry skipped"
 assert_contains "$(_read_parse_warn)" "Warning:" "non-existent host path → warning in output"
+
+describe \
+  "Invalid mode → defaults to ro and a warning is printed."
 
 # Test 12: invalid mode → warning + defaults to ro
 tmpdir_host="$(mktemp -d)"
@@ -149,12 +190,19 @@ assert_contains "$(_read_parse_result)" ":ro" "invalid mode → defaults to ro"
 assert_contains "$(_read_parse_warn)" "Warning:" "invalid mode → warning in output"
 rm -rf "${tmpdir_host}"
 
+describe \
+  "Missing container_path (entry ends with ':') → entry skipped, warning printed."
+
 # Test 13: missing container_path → warning + skipped
 tmpdir_host="$(mktemp -d)"
 run_parse_apptainer "${tmpdir_host}:"
 assert_eq "$(_read_parse_result)" "" "missing container_path → entry skipped"
 assert_contains "$(_read_parse_warn)" "Warning:" "missing container_path → warning in output"
 rm -rf "${tmpdir_host}"
+
+describe \
+  "Comment and blank lines in the mounts file are ignored." \
+  "Exactly one --bind is added for the one valid entry."
 
 # Test 14: comment and blank lines ignored; one valid entry
 tmpdir_host="$(mktemp -d)"
@@ -173,6 +221,9 @@ rm -rf "${tmpd}"
 BIND_COUNT="$(grep -c "^--bind$" "${_PARSE_RESULT_FILE}" || true)"
 assert_eq "$BIND_COUNT" "1" "comment and blank lines ignored; exactly one --bind"
 rm -rf "${tmpdir_host}"
+
+describe \
+  "Multiple valid entries → one --bind per entry (two total)."
 
 # Test 15: multiple valid entries
 tmpdir_host1="$(mktemp -d)"
@@ -215,6 +266,9 @@ run_parse_docker() {
   rm -rf "${td}"
 }
 
+describe \
+  "Docker: valid entry uses -v flag (not --bind) with correct path and mode."
+
 # Test 16: valid entry → -v flag (not --bind)
 tmpdir_host="$(mktemp -d)"
 run_parse_docker "${tmpdir_host}:/container:ro"
@@ -223,6 +277,9 @@ assert_not_contains "$(_read_parse_result)" "--bind" "docker: does not use --bin
 assert_contains "$(_read_parse_result)" "${tmpdir_host}:/container:ro" "docker: correct path and mode"
 rm -rf "${tmpdir_host}"
 
+describe \
+  "Docker: invalid mode → defaults to ro and a warning is printed."
+
 # Test 17a: invalid mode → warning + defaults to ro (docker)
 tmpdir_host="$(mktemp -d)"
 run_parse_docker "${tmpdir_host}:/container:bad"
@@ -230,9 +287,56 @@ assert_contains "$(_read_parse_result)" ":ro" "docker: invalid mode → defaults
 assert_contains "$(_read_parse_warn)" "Warning:" "docker: invalid mode → warning in output"
 rm -rf "${tmpdir_host}"
 
+describe \
+  "Docker: non-existent host path → entry skipped."
+
 # Test 17b: non-existent host path → skipped (docker)
 run_parse_docker "/nonexistent-path-xyzzy-docker:/container:ro"
 assert_eq "$(_read_parse_result)" "" "docker: non-existent host path → entry skipped"
+
+describe \
+  "Docker: multiple valid entries → one -v flag per entry (two total)."
+
+# Test 18: multiple valid entries → two -v flags (docker)
+tmpdir_host1="$(mktemp -d)"
+tmpdir_host2="$(mktemp -d)"
+tmpd="$(mktemp -d)"
+mkdir -p "${tmpd}/.contagent"
+printf '%s:/c1:ro\n%s:/c2:rw\n' "${tmpdir_host1}" "${tmpdir_host2}" > "${tmpd}/.contagent/mounts"
+(
+  unset BASH_ENV
+  export _TMPD="${tmpd}" _PARSE_RESULT_FILE
+  source "${_LIB_}"
+  MOUNTS_ARR=()
+  parse_mounts_docker "${_TMPD}" MOUNTS_ARR 2>/dev/null
+  printf '%s\n' "${MOUNTS_ARR[@]+"${MOUNTS_ARR[@]}"}" > "${_PARSE_RESULT_FILE}"
+)
+rm -rf "${tmpd}"
+V_COUNT="$(grep -c "^-v$" "${_PARSE_RESULT_FILE}" || true)"
+assert_eq "$V_COUNT" "2" "docker: multiple valid entries → two -v flags"
+rm -rf "${tmpdir_host1}" "${tmpdir_host2}"
+
+describe \
+  "Docker: comment and blank lines in the mounts file are ignored." \
+  "Exactly one -v is added for the one valid entry."
+
+# Test 19: comment and blank lines ignored; one valid entry (docker)
+tmpdir_host="$(mktemp -d)"
+tmpd="$(mktemp -d)"
+mkdir -p "${tmpd}/.contagent"
+printf '# comment\n\n%s:/container:ro\n# another comment\n' "${tmpdir_host}" > "${tmpd}/.contagent/mounts"
+(
+  unset BASH_ENV
+  export _TMPD="${tmpd}" _PARSE_RESULT_FILE
+  source "${_LIB_}"
+  MOUNTS_ARR=()
+  parse_mounts_docker "${_TMPD}" MOUNTS_ARR 2>/dev/null
+  printf '%s\n' "${MOUNTS_ARR[@]+"${MOUNTS_ARR[@]}"}" > "${_PARSE_RESULT_FILE}"
+)
+rm -rf "${tmpd}"
+V_COUNT="$(grep -c "^-v$" "${_PARSE_RESULT_FILE}" || true)"
+assert_eq "$V_COUNT" "1" "docker: comment and blank lines ignored; exactly one -v"
+rm -rf "${tmpdir_host}"
 
 # ---------------------------------------------------------------------------
 rm -f "${_PARSE_WARN_FILE}" "${_PARSE_RESULT_FILE}"

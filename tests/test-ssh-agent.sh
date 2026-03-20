@@ -8,6 +8,18 @@ _LIB_="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../wrappers/lib/common.sh"
 PASS=0
 FAIL=0
 
+VERBOSE=0
+for _arg in "$@"; do
+  case "$_arg" in -v|--verbose) VERBOSE=1 ;; esac
+done
+
+describe() {
+  [ "$VERBOSE" -eq 1 ] || return 0
+  local prefix="    "
+  echo "  >"
+  for _line in "$@"; do echo "${prefix}${_line}"; done
+}
+
 ok()   { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; echo "       $2"; FAIL=$((FAIL + 1)); }
 
@@ -68,6 +80,11 @@ _warn()   { cat "${_WARN_FILE}"; }
 # ---------------------------------------------------------------------------
 echo "=== first run: no allowed-keys file, empty stdin → file created empty ==="
 
+describe \
+  "First-run: no allowed-keys file exists yet." \
+  "With empty stdin (EOF) the prompt creates an empty file." \
+  "A second call skips the prompt because the file now exists."
+
 tmpdir="$(mktemp -d)"
 mkdir -p "${tmpdir}/.contagent"
 
@@ -94,6 +111,9 @@ rm -rf "${tmpdir}"
 # ---------------------------------------------------------------------------
 echo "=== allowed-keys file absent or empty → no mount added ==="
 
+describe \
+  "Empty or absent allowed-keys file → no mount args added for apptainer or docker."
+
 tmpdir="$(mktemp -d)"
 mkdir -p "${tmpdir}/.contagent"
 # Pre-create empty file to bypass the interactive prompt
@@ -109,6 +129,10 @@ rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== allowed-keys with non-existent key file ==="
+
+describe \
+  "Key listed in allowed-keys does not exist on disk." \
+  "Warning is printed; no mount args are added for either backend."
 
 tmpdir="$(mktemp -d)"
 mkdir -p "${tmpdir}/.contagent"
@@ -126,6 +150,11 @@ rm -rf "${tmpdir}"
 
 # ---------------------------------------------------------------------------
 echo "=== _start_workspace_ssh_agent with a real (no-passphrase) key ==="
+
+describe \
+  "Real ed25519 key with no passphrase loaded successfully." \
+  "apptainer backend gets --bind; docker backend gets -v and -e SSH_AUTH_SOCK." \
+  "Each backend uses only its own flags, not the other's."
 
 # Generate a temporary key pair for testing
 _KEYDIR="$(mktemp -d)"
@@ -155,6 +184,10 @@ rm -rf "${_KEYDIR}"
 # ---------------------------------------------------------------------------
 echo "=== contagent_ssh_agent_cleanup ==="
 
+describe \
+  "Cleanup is a no-op when _CONTAGENT_SSH_AGENT_PID is unset." \
+  "Returns 0 and produces no error output."
+
 # Cleanup is a no-op when no agent was started
 CLEANUP_OUT="$(
   unset _CONTAGENT_SSH_AGENT_PID 2>/dev/null || true
@@ -163,6 +196,10 @@ CLEANUP_OUT="$(
   echo "ok"
 )"
 assert_eq "${CLEANUP_OUT}" "ok" "cleanup: no-op when _CONTAGENT_SSH_AGENT_PID unset"
+
+describe \
+  "Cleanup kills the workspace SSH agent when _CONTAGENT_SSH_AGENT_PID is set." \
+  "Verifies the process is gone after cleanup and the variable is cleared."
 
 # Cleanup kills the agent when PID is set
 if ssh-agent -s >/dev/null 2>&1; then
@@ -193,6 +230,10 @@ fi
 
 # ---------------------------------------------------------------------------
 echo "=== comment and blank lines in allowed-keys are ignored ==="
+
+describe \
+  "Comment lines (# ...) and blank lines in allowed-keys are skipped." \
+  "The real key path between comments is still loaded successfully."
 
 _KEYDIR2="$(mktemp -d)"
 _KEYFILE2="${_KEYDIR2}/test_key2"

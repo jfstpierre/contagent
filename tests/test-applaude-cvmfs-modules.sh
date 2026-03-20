@@ -7,6 +7,17 @@ _LIB_="$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../wrappers/lib/common.sh"
 PASS=0
 FAIL=0
 
+VERBOSE=0
+for _arg in "$@"; do
+  case "$_arg" in -v|--verbose) VERBOSE=1 ;; esac
+done
+
+describe() {
+  [ "$VERBOSE" -eq 1 ] || return 0
+  local prefix="    "
+  echo "  >"
+  for _line in "$@"; do echo "${prefix}${_line}"; done
+}
 
 ok() {
   echo "  PASS: $1"
@@ -88,6 +99,11 @@ run_test() {
 # ---------------------------------------------------------------------------
 echo "=== First execution (no modules file) ==="
 
+describe \
+  "First execution: no modules file exists." \
+  "Loaded modules are written to the file; no module commands run." \
+  "File is created from scratch with the currently loaded set."
+
 run_test "scipy-stack/2023b:python/3.11" "" ""
 assert_contains "$MODULES_AFTER" "scipy-stack/2023b" "modules file created with first module"
 assert_contains "$MODULES_AFTER" "python/3.11" "modules file created with second module"
@@ -95,6 +111,10 @@ assert_eq "$MODULE_CALLS" "" "no module commands run on first execution"
 
 # ---------------------------------------------------------------------------
 echo "=== Modules match — no prompt ==="
+
+describe \
+  "Modules match: file content matches loaded modules → no prompt, file unchanged." \
+  "Also tests order-independence: file order differing from lmod order still matches."
 
 SAVED=$'scipy-stack/2023b\npython/3.11'
 run_test "scipy-stack/2023b:python/3.11" "$SAVED" ""
@@ -110,6 +130,11 @@ assert_eq "$MODULE_CALLS" "" "no module commands run when order differs but cont
 # ---------------------------------------------------------------------------
 echo "=== Option C: change loaded modules to match file ==="
 
+describe \
+  "Option C: reload to match the saved file." \
+  "module purge is called, then module load for each entry in the file." \
+  "The file itself is not changed."
+
 FILE=$'scipy-stack/2023b\npython/3.11'
 run_test "scipy-stack/2023b" "$FILE" "C"
 assert_eq "$MODULES_AFTER" "$FILE" "modules file unchanged after C"
@@ -120,6 +145,11 @@ assert_contains "$MODULE_CALLS" "module load python/3.11" "python/3.11 loaded af
 # ---------------------------------------------------------------------------
 echo "=== Option U: update file with currently loaded modules ==="
 
+describe \
+  "Option U: overwrite the file with currently loaded modules." \
+  "The removed module (python/3.11) disappears from the file." \
+  "No module commands are run."
+
 FILE=$'scipy-stack/2023b\npython/3.11'
 run_test "scipy-stack/2023b" "$FILE" "U"
 assert_contains "$MODULES_AFTER" "scipy-stack/2023b" "file updated with current module after U"
@@ -129,6 +159,10 @@ assert_eq "$MODULE_CALLS" "" "no module commands run after U"
 # ---------------------------------------------------------------------------
 echo "=== Option I: ignore — nothing changes ==="
 
+describe \
+  "Option I: ignore the mismatch — file and loaded modules unchanged." \
+  "No module commands are run."
+
 FILE=$'scipy-stack/2023b\npython/3.11'
 run_test "scipy-stack/2023b" "$FILE" "I"
 assert_eq "$MODULES_AFTER" "$FILE" "modules file unchanged after I"
@@ -136,6 +170,10 @@ assert_eq "$MODULE_CALLS" "" "no module commands run after I"
 
 # ---------------------------------------------------------------------------
 echo "=== Invalid input then valid choice ==="
+
+describe \
+  "Invalid input is rejected; the prompt repeats until a valid choice is entered." \
+  "Tests 'x' then 'I', and '?' then 'C' as input sequences."
 
 FILE=$'scipy-stack/2023b\npython/3.11'
 run_test "scipy-stack/2023b" "$FILE" $'x\nI'
