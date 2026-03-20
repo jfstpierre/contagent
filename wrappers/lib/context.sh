@@ -70,6 +70,11 @@ keys never enter the container.
 You can perform authenticated git operations (push, fetch from private repos)
 using these pre-approved keys.
 
+Before connecting to any SSH host for the first time in this session (e.g., `git push`
+to a new remote, first-time GitHub access), add its host key:
+  ssh-keyscan <hostname> >> ~/.ssh/known_hosts
+The `~/.ssh/` directory persists between sessions, so you only need to do this once per host.
+
 **IMPORTANT:** Do NOT modify `.contagent/ssh-allowed-keys` without explicit
 user permission. If you need access to an additional key, ask the user first
 and explain why — only edit the file after they confirm. A contagent restart is

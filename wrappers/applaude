@@ -37,6 +37,7 @@ fi
 
 # Persistent per-workspace home (Claude history, project memory, etc. — not sensitive).
 mkdir -p "${CONTAINER_HOME}/.claude"
+mkdir -p "${CONTAINER_HOME}/.ssh"
 
 # Apptainer (unprivileged) does not support layering a --bind on top of --home,
 # so we build a merged home: existing session state + fresh credentials.

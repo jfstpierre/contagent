@@ -57,6 +57,7 @@ chmod 600 "${CRED_DIR}/.claude.json"
 # Empty stubs ensure Docker treats these as files rather than creating directories.
 # The `: >` also clears any credentials left there by an older version of this script.
 mkdir -p "${CONTAINER_HOME}/.claude"
+mkdir -p "${CONTAINER_HOME}/.ssh"
 : > "${CONTAINER_HOME}/.claude/.credentials.json"
 : > "${CONTAINER_HOME}/.claude.json"
 

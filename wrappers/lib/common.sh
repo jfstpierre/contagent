@@ -175,8 +175,9 @@ _prompt_ssh_allowed_keys() {
 }
 
 # Start an isolated per-workspace ssh-agent loaded with only the allowed key files.
-# On success: exports SSH_AUTH_SOCK, SSH_AGENT_PID; sets _CONTAGENT_SSH_AGENT_PID.
-# Returns 0 when the agent is running with ≥1 key, 1 otherwise.
+# On success: exports SSH_AUTH_SOCK (and SSH_AGENT_PID if a new agent was started);
+# sets _CONTAGENT_SSH_AGENT_PID only when a new agent is started.
+# Returns 0 when ≥1 key is available, 1 otherwise.
 # Usage: _start_workspace_ssh_agent <workspace>
 _start_workspace_ssh_agent() {
   local workspace="$1"
@@ -184,15 +185,53 @@ _start_workspace_ssh_agent() {
 
   [ -f "${allowed_keys_file}" ] || return 1
 
-  # Skip if file has no actionable entries
-  local _has=0 _l
+  # Collect allowed key paths (expand ~)
+  local _allowed_keys=()
+  local _l
   while IFS= read -r _l || [ -n "${_l}" ]; do
     [[ -z "${_l}" || "${_l}" =~ ^[[:space:]]*# ]] && continue
-    _has=1; break
+    _allowed_keys+=("${_l/#\~/$HOME}")
   done < "${allowed_keys_file}"
-  [ "${_has}" -eq 0 ] && return 1
+  [ "${#_allowed_keys[@]}" -eq 0 ] && return 1
 
-  # Launch an isolated ssh-agent
+  # Build the set of allowed key fingerprints from the key files on disk
+  local _allowed_fps=()
+  local _key _fp
+  for _key in "${_allowed_keys[@]}"; do
+    if [ -f "${_key}" ]; then
+      _fp="$(ssh-keygen -lf "${_key}" 2>/dev/null | awk '{print $2}')"
+      [ -n "${_fp}" ] && _allowed_fps+=("${_fp}")
+    fi
+  done
+
+  # If the existing SSH agent's keys are all in the allowed set, forward it
+  # directly — this avoids prompting for a passphrase that was already entered.
+  local _parent_sock="${SSH_AUTH_SOCK:-}"
+  if [ -n "${_parent_sock}" ] && [ -S "${_parent_sock}" ]; then
+    local _parent_fps _parent_ok=1 _parent_count=0
+    _parent_fps="$(SSH_AUTH_SOCK="${_parent_sock}" ssh-add -l 2>/dev/null | awk '{print $2}')" || _parent_ok=0
+    if [ "${_parent_ok}" -eq 1 ] && [ -n "${_parent_fps}" ]; then
+      local _pfp _in_allowed
+      while IFS= read -r _pfp; do
+        [ -z "${_pfp}" ] && continue
+        _parent_count=$((_parent_count + 1))
+        _in_allowed=0
+        for _afp in "${_allowed_fps[@]}"; do
+          [ "${_pfp}" = "${_afp}" ] && { _in_allowed=1; break; }
+        done
+        [ "${_in_allowed}" -eq 0 ] && { _parent_ok=0; break; }
+      done <<< "${_parent_fps}"
+    else
+      _parent_ok=0
+    fi
+    if [ "${_parent_ok}" -eq 1 ] && [ "${_parent_count}" -gt 0 ]; then
+      # All keys in the parent agent are allowed — forward it directly
+      export SSH_AUTH_SOCK="${_parent_sock}"
+      return 0
+    fi
+  fi
+
+  # Launch an isolated ssh-agent and load allowed keys into it
   local _aenv
   _aenv="$(ssh-agent -s 2>/dev/null)" || {
     echo "Warning: ssh-agent unavailable; SSH forwarding disabled."
@@ -202,11 +241,9 @@ _start_workspace_ssh_agent() {
   export SSH_AUTH_SOCK SSH_AGENT_PID
   _CONTAGENT_SSH_AGENT_PID="${SSH_AGENT_PID}"
 
-  # Add each allowed key to the workspace agent
-  local _key _exp _added=0
-  while IFS= read -r _key || [ -n "${_key}" ]; do
-    [[ -z "${_key}" || "${_key}" =~ ^[[:space:]]*# ]] && continue
-    _exp="${_key/#\~/$HOME}"
+  local _exp _added=0
+  for _key in "${_allowed_keys[@]}"; do
+    _exp="${_key}"
     if [ ! -f "${_exp}" ]; then
       echo "Warning: SSH key file not found: ${_exp} (skipping)"
       continue
@@ -217,7 +254,7 @@ _start_workspace_ssh_agent() {
       echo "Warning: could not add SSH key: ${_exp}"
       echo "  If the key has a passphrase, run 'ssh-add ${_exp}' first, then retry."
     fi
-  done < "${allowed_keys_file}"
+  done
 
   if [ "${_added}" -eq 0 ]; then
     echo "Warning: no SSH keys were loaded; disabling SSH forwarding for this session."
