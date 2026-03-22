@@ -57,6 +57,7 @@ MERGED_HOME=$(mktemp -d "${RUNTIME_DIR}/contagent-XXXXXX")
 chmod 700 "${MERGED_HOME}"
 
 cp -a "${CONTAINER_HOME}/." "${MERGED_HOME}/" 2>/dev/null || true
+inject_ssh_config_apptainer "${WORKSPACE}" "${MERGED_HOME}"
 mkdir -p "${MERGED_HOME}/.claude"
 cp "${HOST_CLAUDE_DIR}/.credentials.json" "${MERGED_HOME}/.claude/.credentials.json"
 chmod 600 "${MERGED_HOME}/.claude/.credentials.json"

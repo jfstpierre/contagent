@@ -78,33 +78,34 @@ _result() { cat "${_RESULT_FILE}"; }
 _warn()   { cat "${_WARN_FILE}"; }
 
 # ---------------------------------------------------------------------------
-echo "=== first run: no allowed-keys file, empty stdin → file created empty ==="
+echo "=== first run: no config files → silent no-op, no files created ==="
 
 describe \
-  "First-run: no allowed-keys file exists yet." \
-  "With empty stdin (EOF) the prompt creates an empty file." \
-  "A second call skips the prompt because the file now exists."
+  "First-run: neither ssh-allowed-keys nor ssh-config exists." \
+  "forward_ssh_agent_apptainer/docker silently return 0 without creating files." \
+  "No mount args are added. Run 'contagent ssh add' to configure SSH."
 
 tmpdir="$(mktemp -d)"
 mkdir -p "${tmpdir}/.contagent"
 
-# Run with stdin closed so _prompt_ssh_allowed_keys reads EOF immediately
-(
-  unset BASH_ENV SSH_AUTH_SOCK SSH_AGENT_PID _CONTAGENT_SSH_AGENT_PID 2>/dev/null || true
-  source "${_LIB_}"
-  ARGS=()
-  forward_ssh_agent_apptainer "${tmpdir}" ARGS </dev/null >/dev/null 2>&1
-)
-if [ -f "${tmpdir}/.contagent/ssh-allowed-keys" ]; then
-  ok "first run: allowed-keys file created on first call"
-else
-  fail "first run: allowed-keys file created on first call" "file not found"
-fi
-assert_eq "$(cat "${tmpdir}/.contagent/ssh-allowed-keys")" "" "first run: file is empty (no keys entered)"
-
-# Second call should not prompt again (file now exists)
 _run_fwd_apptainer "${tmpdir}"
-assert_eq "$(_result)" "" "first run: empty allowed-keys → no mount added"
+assert_eq "$(_result)" "" "first run apptainer: no config → no mount args"
+assert_eq "$(_warn)" "" "first run apptainer: no config → no warning output"
+
+_run_fwd_docker "${tmpdir}"
+assert_eq "$(_result)" "" "first run docker: no config → no mount args"
+assert_eq "$(_warn)" "" "first run docker: no config → no warning output"
+
+if [ -f "${tmpdir}/.contagent/ssh-allowed-keys" ]; then
+  fail "first run: no files created" "ssh-allowed-keys was created unexpectedly"
+else
+  ok "first run: ssh-allowed-keys not created"
+fi
+if [ -f "${tmpdir}/.contagent/ssh-config" ]; then
+  fail "first run: no files created" "ssh-config was created unexpectedly"
+else
+  ok "first run: ssh-config not created"
+fi
 
 rm -rf "${tmpdir}"
 
@@ -116,8 +117,9 @@ describe \
 
 tmpdir="$(mktemp -d)"
 mkdir -p "${tmpdir}/.contagent"
-# Pre-create empty file to bypass the interactive prompt
+# Pre-create both files to bypass the interactive prompt
 : > "${tmpdir}/.contagent/ssh-allowed-keys"
+: > "${tmpdir}/.contagent/ssh-config"
 
 _run_fwd_apptainer "${tmpdir}"
 assert_eq "$(_result)" "" "apptainer: empty allowed-keys → no mount"

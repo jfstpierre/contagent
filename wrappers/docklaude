@@ -58,6 +58,7 @@ chmod 600 "${CRED_DIR}/.claude.json"
 # The `: >` also clears any credentials left there by an older version of this script.
 mkdir -p "${CONTAINER_HOME}/.claude"
 mkdir -p "${CONTAINER_HOME}/.ssh"
+inject_ssh_config_docker "${WORKSPACE}" "${CONTAINER_HOME}"
 : > "${CONTAINER_HOME}/.claude/.credentials.json"
 : > "${CONTAINER_HOME}/.claude.json"
 

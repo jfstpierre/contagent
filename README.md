@@ -38,7 +38,17 @@ cd /path/to/contagent
 
 The selected type is saved to `~/.contagent/settings` and used by all subsequent `contagent` commands.
 
-### 2. Run an agent
+### 2. (Optional) Configure SSH and mounts for a workspace
+
+```bash
+cd /path/to/project
+contagent ssh add       # select SSH hosts to forward into the container
+contagent mount add     # add extra bind mounts (e.g. /data, ~/models)
+```
+
+These are optional and workspace-local. SSH and mounts can be configured at any time; a session restart is required for changes to take effect.
+
+### 3. Run an agent
 
 ```bash
 cd /path/to/project
@@ -92,7 +102,16 @@ The context file lists every mounted path the agent can see, with host↔contain
 
 ## Extra bind mounts
 
-To mount additional host paths into the container, create a `.contagent/mounts` file in the project directory:
+```bash
+contagent mount add    # interactively add a mount
+contagent mount list   # show current mounts for this workspace
+```
+
+`contagent mount add` prompts for a host path (absolute or `~/…`), a container
+path, and an access mode (`ro`/`rw`). The entry is appended to
+`.contagent/mounts`.
+
+You can also edit `.contagent/mounts` directly:
 
 ```
 # host_path:container_path[:mode]   (mode: ro or rw, default: ro)
@@ -100,7 +119,9 @@ To mount additional host paths into the container, create a `.contagent/mounts` 
 ~/models:/models:ro
 ```
 
-Lines starting with `#` are ignored. Each entry mounts `host_path` at `container_path` inside the container. Tilde (`~`) is expanded to `$HOME`. Paths that do not exist on the host are skipped with a warning.
+Lines starting with `#` are ignored. Tilde (`~`) is expanded to `$HOME`.
+Paths that do not exist on the host are skipped with a warning. A session
+restart is required for mount changes to take effect.
 
 ---
 
@@ -137,7 +158,7 @@ The CVMFS variants also bind `/cvmfs:/cvmfs` into the container and propagate th
 
 ---
 
-## SSH key access
+## SSH access
 
 Contagent can forward an SSH agent into the container so agents can push to
 private repos or authenticate against remote hosts — without exposing your
@@ -145,66 +166,74 @@ private keys.
 
 **Private keys never enter the container.** An isolated per-workspace
 `ssh-agent` is started on the host with only the approved key(s) loaded; the
-container only receives the agent socket.
+container only receives the agent socket. Selected `Host` blocks from
+`~/.ssh/config` are injected into the container's `~/.ssh/config` so SSH
+aliases work inside the container without any manual setup.
 
 ### Setup
 
-1. **First launch** — contagent automatically asks which SSH key file(s) to
-   allow and saves the answer to `.contagent/ssh-allowed-keys`:
-
-   ```
-   Setting up SSH key access for this workspace.
-   To push/fetch from private repos inside the container, enter the SSH private
-   key file path(s) you want to allow. Leave blank and press Enter to skip.
-
-   Keys currently in your SSH agent:
-     256 SHA256:xxxx /home/user/.ssh/id_grappes_githubcq (ED25519)
-
-   Enter key file path(s), one per line. Press Enter on a blank line when done.
-   Type 'none' to disable SSH forwarding for this workspace.
-
-     Key path: ~/.ssh/id_grappes_githubcq
-     Key path:
-   Saved 1 key path(s) to .contagent/ssh-allowed-keys.
-   ```
-
-2. **Subsequent launches** — the saved key list is reused automatically.
-
-3. **Inside the container** — `SSH_AUTH_SOCK` is set; test with:
-
-   ```bash
-   ssh -T git@github.com
-   ```
-
-### Key file format
-
-`.contagent/ssh-allowed-keys` contains one key file path per line.
-Tilde (`~`) is expanded. Lines starting with `#` are ignored.
-
-```
-# Allow only the cluster GitHub key
-~/.ssh/id_grappes_githubcq
+```bash
+cd /path/to/project
+contagent ssh add
 ```
 
-If the file is empty, SSH forwarding is silently skipped for that session.
+An interactive menu lists every named `Host` block from your `~/.ssh/config`
+plus a "Default key" option that forwards your existing agent as-is. Toggle
+entries by number; press Enter on a blank line when done.
+
+```
+SSH host configuration for: /path/to/project
+
+  1) Default key  (forward agent as-is)
+  2) github         github.com              IdentityFile: ~/.ssh/id_github
+  3) work-server    work.example.com        (uses any key in agent)
+  4) *              (Host *)                IdentityFile: ~/.ssh/id_default
+  5) Done / Skip
+
+Choice (toggle number, blank = done):
+```
+
+The selected `Host` blocks are written to `.contagent/ssh-config` and injected
+into the container's `~/.ssh/config` before each run. The private key paths are
+recorded in `.contagent/ssh-allowed-keys` and loaded into an isolated
+per-workspace `ssh-agent` at launch time.
+
+**IdentityFile injection for keyless hosts:** if you select a named host that
+has no `IdentityFile` in its block, and your `~/.ssh/config` contains a
+`Host *` block with an `IdentityFile`, that key is automatically injected into
+the written host block. This gives precise control without relying on SSH's
+implicit `Host *` fallback inside the container.
+
+### Viewing the current configuration
+
+```bash
+contagent ssh list
+```
+
+### Inside the container
+
+`SSH_AUTH_SOCK` is set; test with:
+
+```bash
+ssh -T git@github.com
+```
 
 ### Passphrase-protected keys
 
-If a key has a passphrase and it is not already loaded in a running
-`ssh-agent` on the host, run:
+If a key has a passphrase, load it into the host agent once before launching:
 
 ```bash
 ssh-add ~/.ssh/id_yourkey   # enter passphrase once
 ```
 
-Then launch contagent; the key will be added to the per-workspace agent
-without prompting again.
+Contagent detects that all configured keys are already in the host agent and
+forwards it directly, without starting a new agent or prompting for the
+passphrase again.
 
-### Adding keys from inside the container
+### Modifying SSH config from inside the container
 
-If an agent needs an additional key, it must **ask user permission first**
-before editing `.contagent/ssh-allowed-keys`. Editing the file alone is not
-sufficient — a contagent restart is required for changes to take effect.
+SSH config is managed on the host via `contagent ssh add`. An agent inside the
+container cannot modify it — a restart is required for any changes to take effect.
 
 ---
 
@@ -252,6 +281,8 @@ bash tests/test-contagent-settings.sh
 bash tests/test-wrapper-preflight.sh
 bash tests/test-credential-cleanup.sh
 bash tests/test-context-generation.sh
+bash tests/test-ssh-config-select.sh
+bash tests/test-ssh-agent.sh
 ```
 
 | File | What it covers |
@@ -263,4 +294,5 @@ bash tests/test-context-generation.sh
 | `tests/test-wrapper-preflight.sh` | Pre-flight checks for all 12 wrapper scripts |
 | `tests/test-credential-cleanup.sh` | Credential isolation for all Apptainer and Docker wrappers |
 | `tests/test-context-generation.sh` | `generate_context_file`, `generate_opencode_config`, `install_cursor_rules`, `install_claude_skills` |
+| `tests/test-ssh-config-select.sh` | `parse_ssh_config_hosts`, `_parse_ssh_catchall_blocks`, `_collect_wildcard_ssh_blocks`, `prompt_ssh_host_selection`, `_inject_ssh_config` |
 | `tests/test-ssh-agent.sh` | `forward_ssh_agent_apptainer`, `forward_ssh_agent_docker`, `_start_workspace_ssh_agent`, `contagent_ssh_agent_cleanup` |

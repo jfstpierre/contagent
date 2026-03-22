@@ -20,6 +20,10 @@ usage() {
   echo "  agent       Run Cursor agent inside the container"
   echo "  opencode    Run OpenCode inside the container"
   echo "  bash        Start an interactive bash shell inside the container"
+  echo "  ssh add     Select SSH hosts to make available in this workspace"
+  echo "  ssh list    Show current SSH configuration for this workspace"
+  echo "  mount add   Add a bind mount for this workspace"
+  echo "  mount list  Show current mounts for this workspace"
   echo ""
   echo "Run 'contagent build' first to set up the container before using"
   echo "the agent commands."
@@ -38,6 +42,17 @@ set_setting() {
     sed -i "s|^${key}=.*|${key}=${value}|" "${SETTINGS_FILE}"
   else
     printf '%s=%s\n' "${key}" "${value}" >>"${SETTINGS_FILE}"
+  fi
+}
+
+# Error out if the current directory is not a contagent workspace
+# (i.e. .contagent/ does not exist here yet).
+check_workspace_dir() {
+  if [ ! -d "$(pwd)/.contagent" ]; then
+    echo "Error: no .contagent/ directory found in $(pwd)."
+    echo "This command must be run from a contagent workspace directory."
+    echo "Run 'contagent build' from the workspace first to initialise it."
+    exit 1
   fi
 }
 
@@ -246,6 +261,60 @@ case "${1:-}" in
     if [ "${CONTAINER_TYPE}" != "docker" ]; then
       echo "  SIF image      : ${SIF_IMAGE}"
     fi
+    echo ""
+    echo "To configure SSH host access for a workspace, run:"
+    echo "  contagent ssh add"
+    ;;
+
+  # --- ssh -----------------------------------------------------------------
+  ssh)
+    source "${SCRIPT_DIR}/wrappers/lib/ssh_config_select.sh"
+    case "${2:-}" in
+      add)
+        check_home_dir
+        check_workspace_dir
+        prompt_ssh_host_selection "$(pwd)"
+        ;;
+      list)
+        check_home_dir
+        check_workspace_dir
+        list_ssh_selection "$(pwd)"
+        ;;
+      *)
+        echo "Usage: contagent ssh <subcommand>"
+        echo ""
+        echo "Subcommands:"
+        echo "  add    Select SSH hosts to make available in this workspace"
+        echo "  list   Show current SSH configuration for this workspace"
+        exit 1
+        ;;
+    esac
+    ;;
+
+  # --- mount ---------------------------------------------------------------
+  mount)
+    source "${SCRIPT_DIR}/wrappers/lib/common.sh"
+    source "${SCRIPT_DIR}/wrappers/lib/mounts_manage.sh"
+    case "${2:-}" in
+      add)
+        check_home_dir
+        check_workspace_dir
+        add_mount "$(pwd)"
+        ;;
+      list)
+        check_home_dir
+        check_workspace_dir
+        list_mounts "$(pwd)"
+        ;;
+      *)
+        echo "Usage: contagent mount <subcommand>"
+        echo ""
+        echo "Subcommands:"
+        echo "  add    Add a bind mount for this workspace"
+        echo "  list   Show current mounts for this workspace"
+        exit 1
+        ;;
+    esac
     ;;
 
   # --- help / unknown ------------------------------------------------------

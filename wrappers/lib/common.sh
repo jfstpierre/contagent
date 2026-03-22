@@ -2,6 +2,9 @@
 # Source this file; do not execute directly.
 # Requires bash 4.3+ (uses declare -n namerefs).
 
+_COMMON_LIB_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+source "${_COMMON_LIB_DIR}/ssh_config_select.sh"
+
 # Ensure lmod's module function is available.
 # Returns 0 if module is (or becomes) available, 1 otherwise.
 ensure_module() {
@@ -185,6 +188,15 @@ _start_workspace_ssh_agent() {
 
   [ -f "${allowed_keys_file}" ] || return 1
 
+  # Handle __default__ mode: forward the parent agent directly, no key filtering
+  if grep -qxF '__default__' "${allowed_keys_file}" 2>/dev/null; then
+    if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "${SSH_AUTH_SOCK}" ]; then
+      export SSH_AUTH_SOCK
+      return 0
+    fi
+    return 1
+  fi
+
   # Collect allowed key paths (expand ~)
   local _allowed_keys=()
   local _l
@@ -284,7 +296,10 @@ forward_ssh_agent_apptainer() {
   local -n _fwdssa_arr="$2"
 
   local _akeys="${workspace}/.contagent/ssh-allowed-keys"
-  [ -f "${_akeys}" ] || _prompt_ssh_allowed_keys "${_akeys}"
+  local _sshcfg="${workspace}/.contagent/ssh-config"
+  if [ ! -f "${_akeys}" ] && [ ! -f "${_sshcfg}" ]; then
+    return 0  # no SSH config yet; run 'contagent ssh add' to configure
+  fi
 
   _start_workspace_ssh_agent "${workspace}" || return 0
 
@@ -302,7 +317,10 @@ forward_ssh_agent_docker() {
   local -n _fwdssad_arr="$2"
 
   local _akeys="${workspace}/.contagent/ssh-allowed-keys"
-  [ -f "${_akeys}" ] || _prompt_ssh_allowed_keys "${_akeys}"
+  local _sshcfg="${workspace}/.contagent/ssh-config"
+  if [ ! -f "${_akeys}" ] && [ ! -f "${_sshcfg}" ]; then
+    return 0  # no SSH config yet; run 'contagent ssh add' to configure
+  fi
 
   _start_workspace_ssh_agent "${workspace}" || return 0
 
@@ -379,3 +397,47 @@ reconcile_cvmfs_modules() {
     fi
   fi
 }
+
+# Write selected Host blocks from .contagent/ssh-config into a container home's
+# ~/.ssh/config.  Uses sentinel comments to avoid duplication on repeated launches.
+# No-op if .contagent/ssh-config does not exist or is empty.
+# Usage: _inject_ssh_config <workspace> <target_home>
+_inject_ssh_config() {
+  local workspace="$1"
+  local target_home="$2"
+  local src="${workspace}/.contagent/ssh-config"
+
+  [ -f "${src}" ] && [ -s "${src}" ] || return 0
+
+  local ssh_dir="${target_home}/.ssh"
+  local config_file="${ssh_dir}/config"
+  local tmp_file="${ssh_dir}/config.contagent-tmp"
+
+  mkdir -p "${ssh_dir}"
+  chmod 700 "${ssh_dir}"
+  [ -f "${config_file}" ] || touch "${config_file}"
+  chmod 600 "${config_file}"
+
+  local b="# contagent-managed-hosts-begin"
+  local e="# contagent-managed-hosts-end"
+
+  # Strip any previously injected block using a temp file (avoids read/write race)
+  if grep -qF "${b}" "${config_file}" 2>/dev/null; then
+    awk -v b="${b}" -v e="${e}" '
+      $0 == b { skip=1; next }
+      $0 == e { skip=0; next }
+      !skip    { print }
+    ' "${config_file}" > "${tmp_file}" && mv "${tmp_file}" "${config_file}"
+    chmod 600 "${config_file}"
+  fi
+
+  # Append the managed block
+  {
+    printf '\n%s\n' "${b}"
+    cat "${src}"
+    printf '%s\n' "${e}"
+  } >> "${config_file}"
+}
+
+inject_ssh_config_apptainer() { _inject_ssh_config "$1" "$2"; }
+inject_ssh_config_docker()    { _inject_ssh_config "$1" "$2"; }

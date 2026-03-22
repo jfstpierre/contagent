@@ -50,7 +50,9 @@ These are created by contagent wrappers to isolate tool state from the host. All
 | `.contagent/appopen/modules` | `appopen-cvmfs` only | List of lmod modules loaded for the session |
 | `.contagent/dockbash/home/` | `dockbash` (Docker) | Isolated home directory for interactive shell sessions |
 | `.contagent/appbash/home/` | `appbash`, `appbash-cvmfs` (Apptainer) | Isolated home directory for interactive shell sessions |
-| `.contagent/mounts` | all variants | Optional extra bind mounts file (`host_path:container_path[:mode]`) |
+| `.contagent/mounts` | all variants | Optional extra bind mounts file (`host_path:container_path[:mode]`); managed via `contagent mount add/list` |
+| `.contagent/ssh-allowed-keys` | all variants | SSH key file paths (or `__default__`) approved for agent forwarding; managed via `contagent ssh add` |
+| `.contagent/ssh-config` | all variants | Selected `Host` blocks copied from `~/.ssh/config`; injected into the container's `~/.ssh/config` at launch |
 | `.contagent/context.md` | all agent variants | Auto-generated per-run file describing the container's filesystem layout, injected into the agent session |
 | `.cursor/rules/contagent.mdc` | `appsur`, `appsur-cvmfs`, `docksur` | Auto-generated Cursor rules file embedding `context.md`; added to `.gitignore` automatically |
 

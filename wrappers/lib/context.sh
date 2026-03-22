@@ -60,7 +60,63 @@ EOF
 
     # Note SSH agent forwarding if active
     if [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "${SSH_AUTH_SOCK}" ]; then
-      cat << 'EOF'
+      local _allowed_keys_file="${workspace}/.contagent/ssh-allowed-keys"
+      local _is_default=0
+      grep -qxF '__default__' "${_allowed_keys_file}" 2>/dev/null && _is_default=1
+
+      if [ "${_is_default}" -eq 1 ]; then
+        cat << 'EOF'
+
+## SSH Agent
+An SSH agent is forwarded into this container (`SSH_AUTH_SOCK` is set) in
+**default key** mode — the host agent is forwarded as-is with no key filtering.
+
+You can perform authenticated git operations (push, fetch from private repos)
+using the keys already loaded in the host agent.
+
+Before connecting to any SSH host for the first time in this session, add its
+host key:
+  ssh-keyscan <hostname> >> ~/.ssh/known_hosts
+The `~/.ssh/` directory persists between sessions, so you only need to do this
+once per host.
+
+**IMPORTANT:** Do NOT modify `.contagent/ssh-allowed-keys` or
+`.contagent/ssh-config` without explicit user permission. A contagent restart
+is required for changes to take effect.
+If you need to connect to a new SSH host, ask the user to run
+`contagent ssh add` in the workspace directory on the host.
+EOF
+      else
+        local _has_ssh_config=0
+        [ -s "${workspace}/.contagent/ssh-config" ] && _has_ssh_config=1
+        if [ "${_has_ssh_config}" -eq 1 ]; then
+          cat << 'EOF'
+
+## SSH Agent
+An SSH agent is forwarded into this container (`SSH_AUTH_SOCK` is set). Only
+the keys listed in `.contagent/ssh-allowed-keys` are loaded — private keys
+never enter the container.
+
+Selected SSH Host blocks from `.contagent/ssh-config` have been injected into
+`~/.ssh/config`, so you can connect using those host aliases directly.
+
+You can perform authenticated git operations (push, fetch from private repos)
+using the pre-approved keys.
+
+Before connecting to any SSH host for the first time in this session, add its
+host key:
+  ssh-keyscan <hostname> >> ~/.ssh/known_hosts
+The `~/.ssh/` directory persists between sessions, so you only need to do this
+once per host.
+
+**IMPORTANT:** Do NOT modify `.contagent/ssh-allowed-keys` or
+`.contagent/ssh-config` without explicit user permission. A contagent restart
+is required for changes to take effect.
+If you need to add a new SSH host, ask the user to run
+`contagent ssh add` in the workspace directory on the host.
+EOF
+        else
+          cat << 'EOF'
 
 ## SSH Agent
 An SSH agent is forwarded into this container (`SSH_AUTH_SOCK` is set). Only
@@ -75,11 +131,13 @@ to a new remote, first-time GitHub access), add its host key:
   ssh-keyscan <hostname> >> ~/.ssh/known_hosts
 The `~/.ssh/` directory persists between sessions, so you only need to do this once per host.
 
-**IMPORTANT:** Do NOT modify `.contagent/ssh-allowed-keys` without explicit
-user permission. If you need access to an additional key, ask the user first
-and explain why — only edit the file after they confirm. A contagent restart is
-required for changes to take effect.
+**IMPORTANT:** Do NOT modify `.contagent/ssh-allowed-keys` or
+`.contagent/ssh-config` without explicit user permission. If you need access
+to an additional key or host, use the `add-ssh-host` skill or ask the user.
+A contagent restart is required for changes to take effect.
 EOF
+        fi
+      fi
     fi
 
     if [ -n "${modules_file}" ] && [ -f "${modules_file}" ]; then

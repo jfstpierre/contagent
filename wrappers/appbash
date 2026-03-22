@@ -22,6 +22,7 @@ fi
 
 # Create per-workspace home directory structure
 mkdir -p "${CONTAINER_HOME}"
+inject_ssh_config_apptainer "${WORKSPACE}" "${CONTAINER_HOME}"
 
 # Load the Apptainer module recorded by contagent, if any
 load_apptainer_module

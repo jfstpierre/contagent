@@ -17,6 +17,7 @@ CONTAINER_HOME="${DOCKBASH_DIR}/home"
 
 # Create per-workspace home directory structure
 mkdir -p "${CONTAINER_HOME}"
+inject_ssh_config_docker "${WORKSPACE}" "${CONTAINER_HOME}"
 
 # Ensure the image exists
 if ! docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
