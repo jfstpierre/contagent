@@ -437,6 +437,24 @@ _inject_ssh_config() {
     cat "${src}"
     printf '%s\n' "${e}"
   } >> "${config_file}"
+
+  # Copy public keys for all allowed identities so SSH can match them against
+  # the forwarded agent even with IdentitiesOnly yes (private key never exists
+  # in the container; .pub file is sufficient for agent key matching).
+  local allowed_keys_file="${workspace}/.contagent/ssh-allowed-keys"
+  if [ -f "${allowed_keys_file}" ]; then
+    local _l
+    while IFS= read -r _l || [ -n "${_l}" ]; do
+      [[ -z "${_l}" || "${_l}" =~ ^[[:space:]]*# || "${_l}" == "__default__" ]] && continue
+      local _key="${_l/#\~/$HOME}"
+      local _pub="${_key}.pub"
+      if [ -f "${_pub}" ]; then
+        local _dest="${ssh_dir}/$(basename "${_pub}")"
+        cp "${_pub}" "${_dest}"
+        chmod 644 "${_dest}"
+      fi
+    done < "${allowed_keys_file}"
+  fi
 }
 
 inject_ssh_config_apptainer() { _inject_ssh_config "$1" "$2"; }

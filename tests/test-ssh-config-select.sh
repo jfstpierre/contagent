@@ -691,6 +691,149 @@ assert_eq "${_count}" "1" "_inject: update → single sentinel block"
 rm -rf "${_tmpdir}"
 
 # ---------------------------------------------------------------------------
+echo "=== _inject_ssh_config: public key copying ==="
+
+describe \
+  "No ssh-allowed-keys file present." \
+  "No .pub files should appear in ~/.ssh/; function exits cleanly."
+
+_tmpdir="$(mktemp -d)"
+_ws="${_tmpdir}/workspace"
+_home="${_tmpdir}/home"
+mkdir -p "${_ws}/.contagent"
+printf 'Host foo\n    HostName foo.example.com\n' > "${_ws}/.contagent/ssh-config"
+# deliberately no ssh-allowed-keys
+(
+  source "${_LIB_COMMON_}"
+  _inject_ssh_config "${_ws}" "${_home}"
+)
+_pub_count="$(find "${_home}/.ssh" -name '*.pub' 2>/dev/null | wc -l)"
+assert_eq "${_pub_count}" "0" "_inject pubkey: no allowed-keys → no .pub files"
+rm -rf "${_tmpdir}"
+
+# ---
+
+describe \
+  "Key listed in ssh-allowed-keys has a .pub file on disk." \
+  ".pub is copied to ~/.ssh/ with permissions 644."
+
+_tmpdir="$(mktemp -d)"
+_ws="${_tmpdir}/workspace"
+_home="${_tmpdir}/home"
+_keydir="${_tmpdir}/keys"
+mkdir -p "${_ws}/.contagent" "${_keydir}"
+ssh-keygen -t ed25519 -N "" -f "${_keydir}/id_test" >/dev/null 2>&1
+printf 'Host foo\n    HostName foo.example.com\n' > "${_ws}/.contagent/ssh-config"
+printf '%s\n' "${_keydir}/id_test" > "${_ws}/.contagent/ssh-allowed-keys"
+(
+  source "${_LIB_COMMON_}"
+  _inject_ssh_config "${_ws}" "${_home}"
+)
+[ -f "${_home}/.ssh/id_test.pub" ] \
+  && ok "_inject pubkey: .pub file copied" \
+  || fail "_inject pubkey: .pub file copied" "" "file not found"
+_perms="$(stat -c '%a' "${_home}/.ssh/id_test.pub" 2>/dev/null)"
+assert_eq "${_perms}" "644" "_inject pubkey: .pub file has 644 permissions"
+rm -rf "${_tmpdir}"
+
+# ---
+
+describe \
+  "Key listed in ssh-allowed-keys has no .pub file on disk." \
+  "Function silently skips it; no error, no files created."
+
+_tmpdir="$(mktemp -d)"
+_ws="${_tmpdir}/workspace"
+_home="${_tmpdir}/home"
+mkdir -p "${_ws}/.contagent"
+printf 'Host foo\n    HostName foo.example.com\n' > "${_ws}/.contagent/ssh-config"
+printf '%s\n' "${_tmpdir}/nonexistent_key" > "${_ws}/.contagent/ssh-allowed-keys"
+(
+  source "${_LIB_COMMON_}"
+  _inject_ssh_config "${_ws}" "${_home}"
+)
+_pub_count="$(find "${_home}/.ssh" -name '*.pub' 2>/dev/null | wc -l)"
+assert_eq "${_pub_count}" "0" "_inject pubkey: missing .pub → skipped silently"
+rm -rf "${_tmpdir}"
+
+# ---
+
+describe \
+  "ssh-allowed-keys contains only __default__." \
+  "No .pub files should be copied."
+
+_tmpdir="$(mktemp -d)"
+_ws="${_tmpdir}/workspace"
+_home="${_tmpdir}/home"
+mkdir -p "${_ws}/.contagent"
+printf 'Host foo\n    HostName foo.example.com\n' > "${_ws}/.contagent/ssh-config"
+printf '__default__\n' > "${_ws}/.contagent/ssh-allowed-keys"
+(
+  source "${_LIB_COMMON_}"
+  _inject_ssh_config "${_ws}" "${_home}"
+)
+_pub_count="$(find "${_home}/.ssh" -name '*.pub' 2>/dev/null | wc -l)"
+assert_eq "${_pub_count}" "0" "_inject pubkey: __default__ → no .pub files"
+rm -rf "${_tmpdir}"
+
+# ---
+
+describe \
+  "Multiple keys in ssh-allowed-keys, all with .pub files." \
+  "All .pub files copied to ~/.ssh/ with 644 permissions."
+
+_tmpdir="$(mktemp -d)"
+_ws="${_tmpdir}/workspace"
+_home="${_tmpdir}/home"
+_keydir="${_tmpdir}/keys"
+mkdir -p "${_ws}/.contagent" "${_keydir}"
+ssh-keygen -t ed25519 -N "" -f "${_keydir}/id_first"  >/dev/null 2>&1
+ssh-keygen -t ed25519 -N "" -f "${_keydir}/id_second" >/dev/null 2>&1
+printf 'Host foo\n    HostName foo.example.com\n' > "${_ws}/.contagent/ssh-config"
+printf '%s\n%s\n' "${_keydir}/id_first" "${_keydir}/id_second" \
+  > "${_ws}/.contagent/ssh-allowed-keys"
+(
+  source "${_LIB_COMMON_}"
+  _inject_ssh_config "${_ws}" "${_home}"
+)
+[ -f "${_home}/.ssh/id_first.pub" ] \
+  && ok "_inject pubkey: multiple keys → first .pub copied" \
+  || fail "_inject pubkey: multiple keys → first .pub copied" "" "file not found"
+[ -f "${_home}/.ssh/id_second.pub" ] \
+  && ok "_inject pubkey: multiple keys → second .pub copied" \
+  || fail "_inject pubkey: multiple keys → second .pub copied" "" "file not found"
+_perms1="$(stat -c '%a' "${_home}/.ssh/id_first.pub" 2>/dev/null)"
+_perms2="$(stat -c '%a' "${_home}/.ssh/id_second.pub" 2>/dev/null)"
+assert_eq "${_perms1}" "644" "_inject pubkey: multiple keys → first .pub 644"
+assert_eq "${_perms2}" "644" "_inject pubkey: multiple keys → second .pub 644"
+rm -rf "${_tmpdir}"
+
+# ---
+
+describe \
+  "Inject called twice with same key in ssh-allowed-keys." \
+  "Exactly one .pub file present; permissions still 644."
+
+_tmpdir="$(mktemp -d)"
+_ws="${_tmpdir}/workspace"
+_home="${_tmpdir}/home"
+_keydir="${_tmpdir}/keys"
+mkdir -p "${_ws}/.contagent" "${_keydir}"
+ssh-keygen -t ed25519 -N "" -f "${_keydir}/id_test" >/dev/null 2>&1
+printf 'Host foo\n    HostName foo.example.com\n' > "${_ws}/.contagent/ssh-config"
+printf '%s\n' "${_keydir}/id_test" > "${_ws}/.contagent/ssh-allowed-keys"
+(
+  source "${_LIB_COMMON_}"
+  _inject_ssh_config "${_ws}" "${_home}"
+  _inject_ssh_config "${_ws}" "${_home}"
+)
+_pub_count="$(find "${_home}/.ssh" -name 'id_test.pub' 2>/dev/null | wc -l)"
+assert_eq "${_pub_count}" "1" "_inject pubkey: idempotent → exactly one .pub file"
+_perms="$(stat -c '%a' "${_home}/.ssh/id_test.pub" 2>/dev/null)"
+assert_eq "${_perms}" "644" "_inject pubkey: idempotent → permissions still 644"
+rm -rf "${_tmpdir}"
+
+# ---------------------------------------------------------------------------
 rm -f /tmp/_psch_out
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
