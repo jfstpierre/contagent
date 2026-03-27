@@ -119,78 +119,84 @@ cleanup_test() {
 }
 
 # ---------------------------------------------------------------------------
-echo "=== applaude credential cleanup ==="
+echo "=== applaude credential handling ==="
 
 describe \
-  "applaude copies credentials into the workspace home before launch." \
-  "On exit, credential files are removed; the MERGED_HOME temp dir is also deleted." \
-  "CVMFS variant omitted: shared library handles cleanup identically for both."
+  "applaude copies real credentials to CONTAGENT_DIR (outside workspace)." \
+  "The workspace-side credential files are zeroed stubs — never contain real tokens." \
+  "CVMFS variant omitted: shared library handles credentials identically for both."
 
 run_apptainer_wrapper "applaude" "apptainer.sif"
-CRED1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude/.credentials.json"
-CRED2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude.json"
-RUNTIME="${SETUP_TMPDIR}/contagentdir/runtime"
+STUB1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude/.credentials.json"
+STUB2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude.json"
+CRED_DIR="${SETUP_TMPDIR}/contagentdir/claude/creds"
 
-[ ! -f "${CRED1}" ] \
-  && ok "applaude: .credentials.json absent from workspace after exit" \
-  || fail "applaude: .credentials.json absent from workspace after exit" "file still exists: ${CRED1}"
+[ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
+  && ok "applaude: .credentials.json stub in workspace is empty" \
+  || fail "applaude: .credentials.json stub in workspace is empty" "file missing or non-empty"
 
-[ ! -f "${CRED2}" ] \
-  && ok "applaude: .claude.json absent from workspace after exit" \
-  || fail "applaude: .claude.json absent from workspace after exit" "file still exists: ${CRED2}"
+[ -f "${STUB2}" ] && [ ! -s "${STUB2}" ] \
+  && ok "applaude: .claude.json stub in workspace is empty" \
+  || fail "applaude: .claude.json stub in workspace is empty" "file missing or non-empty"
 
-LEFTOVER_MERGED="$(find "${RUNTIME}" -maxdepth 1 -name 'contagent-*' -type d 2>/dev/null || true)"
-assert_eq "$LEFTOVER_MERGED" "" "applaude: MERGED_HOME deleted after exit"
+[ -f "${CRED_DIR}/.credentials.json" ] \
+  && ok "applaude: .credentials.json copied to CONTAGENT_DIR" \
+  || fail "applaude: .credentials.json copied to CONTAGENT_DIR" "file not found in cred dir"
+
 cleanup_test
 
 # (applaude-cvmfs omitted: credential cleanup is in the shared library and
 #  exercises the same code path regardless of which SIF variant is used.)
 
 # ---------------------------------------------------------------------------
-echo "=== appopen credential cleanup ==="
+echo "=== appopen credential handling ==="
 
 describe \
-  "appopen copies OpenCode auth into the workspace home before launch." \
-  "On exit, auth.json is removed and the MERGED_HOME temp dir is deleted." \
-  "CVMFS variant omitted: shared library handles cleanup identically for both."
+  "appopen copies OpenCode auth to CONTAGENT_DIR (outside workspace)." \
+  "The workspace-side auth.json stub is zeroed — never contains real tokens." \
+  "CVMFS variant omitted: shared library handles credentials identically for both."
 
 run_apptainer_wrapper "appopen" "apptainer.sif"
-CRED1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.local/share/opencode/auth.json"
-RUNTIME="${SETUP_TMPDIR}/contagentdir/runtime"
+STUB1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.local/share/opencode/auth.json"
+CRED_DIR="${SETUP_TMPDIR}/contagentdir/opencode/creds"
 
-[ ! -f "${CRED1}" ] \
-  && ok "appopen: auth.json absent from workspace after exit" \
-  || fail "appopen: auth.json absent from workspace after exit" "file still exists: ${CRED1}"
+[ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
+  && ok "appopen: auth.json stub in workspace is empty" \
+  || fail "appopen: auth.json stub in workspace is empty" "file missing or non-empty"
 
-LEFTOVER_MERGED="$(find "${RUNTIME}" -maxdepth 1 -name 'contagent-*' -type d 2>/dev/null || true)"
-assert_eq "$LEFTOVER_MERGED" "" "appopen: MERGED_HOME deleted after exit"
+[ -f "${CRED_DIR}/auth.json" ] \
+  && ok "appopen: auth.json copied to CONTAGENT_DIR" \
+  || fail "appopen: auth.json copied to CONTAGENT_DIR" "file not found in cred dir"
+
 cleanup_test
 
 # (appopen-cvmfs omitted: same reasoning as applaude-cvmfs above.)
 
 # ---------------------------------------------------------------------------
-echo "=== appsur credential cleanup ==="
+echo "=== appsur credential handling ==="
 
 describe \
-  "appsur copies Cursor credentials into the workspace home before launch." \
-  "On exit, auth.json and cli-config.json are removed; MERGED_HOME is deleted." \
-  "CVMFS variant omitted: shared library handles cleanup identically for both."
+  "appsur copies Cursor credentials to CONTAGENT_DIR (outside workspace)." \
+  "The workspace-side auth.json and cli-config.json stubs are zeroed." \
+  "CVMFS variant omitted: shared library handles credentials identically for both."
 
 run_apptainer_wrapper "appsur" "apptainer.sif"
-CRED1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.config/cursor/auth.json"
-CRED2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.cursor/cli-config.json"
-RUNTIME="${SETUP_TMPDIR}/contagentdir/runtime"
+STUB1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.config/cursor/auth.json"
+STUB2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.cursor/cli-config.json"
+CRED_DIR="${SETUP_TMPDIR}/contagentdir/cursor/creds"
 
-[ ! -f "${CRED1}" ] \
-  && ok "appsur: auth.json absent from workspace after exit" \
-  || fail "appsur: auth.json absent from workspace after exit" "file still exists: ${CRED1}"
+[ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
+  && ok "appsur: auth.json stub in workspace is empty" \
+  || fail "appsur: auth.json stub in workspace is empty" "file missing or non-empty"
 
-[ ! -f "${CRED2}" ] \
-  && ok "appsur: cli-config.json absent from workspace after exit" \
-  || fail "appsur: cli-config.json absent from workspace after exit" "file still exists: ${CRED2}"
+[ -f "${STUB2}" ] && [ ! -s "${STUB2}" ] \
+  && ok "appsur: cli-config.json stub in workspace is empty" \
+  || fail "appsur: cli-config.json stub in workspace is empty" "file missing or non-empty"
 
-LEFTOVER_MERGED="$(find "${RUNTIME}" -maxdepth 1 -name 'contagent-*' -type d 2>/dev/null || true)"
-assert_eq "$LEFTOVER_MERGED" "" "appsur: MERGED_HOME deleted after exit"
+[ -f "${CRED_DIR}/auth.json" ] \
+  && ok "appsur: auth.json copied to CONTAGENT_DIR" \
+  || fail "appsur: auth.json copied to CONTAGENT_DIR" "file not found in cred dir"
+
 cleanup_test
 
 # (appsur-cvmfs omitted: same reasoning as applaude-cvmfs above.)

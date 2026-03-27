@@ -49,31 +49,22 @@ fi
 # Persistent per-workspace home (Claude history, project memory, etc. — not sensitive).
 mkdir -p "${CONTAINER_HOME}/.claude"
 mkdir -p "${CONTAINER_HOME}/.ssh"
+inject_ssh_config_apptainer "${WORKSPACE}" "${CONTAINER_HOME}"
 
-# Apptainer (unprivileged) does not support layering a --bind on top of --home,
-# so we build a merged home: existing session state + fresh credentials.
-# The merged home is used as --home; on exit its contents are synced back to
-# CONTAINER_HOME with credentials stripped, keeping the workspace clean.
-RUNTIME_DIR="${CONTAGENT_DIR:-${HOME}/.contagent}/runtime"
-mkdir -p "${RUNTIME_DIR}"
-MERGED_HOME=$(mktemp -d "${RUNTIME_DIR}/contagent-XXXXXX")
-chmod 700 "${MERGED_HOME}"
+# Credentials live in ~/.contagent (private, never in the shareable workspace).
+# Copied fresh every launch so token refreshes from previous sessions are picked up.
+CRED_DIR="${CONTAGENT_DIR:-${HOME}/.contagent}/claude/creds"
+mkdir -p "${CRED_DIR}"
+cp "${HOST_CLAUDE_DIR}/.credentials.json" "${CRED_DIR}/.credentials.json"
+chmod 600 "${CRED_DIR}/.credentials.json"
+cp "${HOST_CLAUDE_JSON}" "${CRED_DIR}/.claude.json"
+chmod 600 "${CRED_DIR}/.claude.json"
 
-cp -a "${CONTAINER_HOME}/." "${MERGED_HOME}/" 2>/dev/null || true
-inject_ssh_config_apptainer "${WORKSPACE}" "${MERGED_HOME}"
-mkdir -p "${MERGED_HOME}/.claude"
-cp "${HOST_CLAUDE_DIR}/.credentials.json" "${MERGED_HOME}/.claude/.credentials.json"
-chmod 600 "${MERGED_HOME}/.claude/.credentials.json"
-cp "${HOST_CLAUDE_JSON}" "${MERGED_HOME}/.claude.json"
-chmod 600 "${MERGED_HOME}/.claude.json"
+# Empty stubs ensure the bind targets exist as files (not directories).
+: > "${CONTAINER_HOME}/.claude/.credentials.json"
+: > "${CONTAINER_HOME}/.claude.json"
 
-_contagent_cleanup() {
-  cp -a "${MERGED_HOME}/." "${CONTAINER_HOME}/" 2>/dev/null || true
-  rm -f "${CONTAINER_HOME}/.claude/.credentials.json" "${CONTAINER_HOME}/.claude.json"
-  rm -rf "${MERGED_HOME}"
-  contagent_ssh_agent_cleanup
-}
-trap '_contagent_cleanup' EXIT
+trap 'contagent_ssh_agent_cleanup' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
@@ -99,15 +90,17 @@ install_claude_skills "${CONTAINER_HOME}"
 # Ensure claude's install dir is on PATH inside the container.
 # Also include $HOME/.local/bin (= CONTAINER_HOME/.local/bin) so claude's
 # startup check doesn't warn about ~/.local/bin not being in PATH.
-export APPTAINERENV_PATH="/root/.local/bin:${MERGED_HOME}/.local/bin:${PATH}"
+export APPTAINERENV_PATH="/root/.local/bin:${CONTAINER_HOME}/.local/bin:${PATH}"
 
 # Run the container with:
-# --home: merged home (session state + credentials; never persisted back with credentials)
-# --bind: mount workspace read-write, plus any extra mounts from .contagent/mounts
+# --home: per-workspace persistent home
+# --bind: credential overlay (fresh from host), workspace read-write, plus extra mounts
 # --workdir: start in /workspace
 # Pass through all arguments to claude
 apptainer run \
-    --home "${MERGED_HOME}" \
+    --home "${CONTAINER_HOME}" \
+    --bind "${CRED_DIR}/.credentials.json:${CONTAINER_HOME}/.claude/.credentials.json" \
+    --bind "${CRED_DIR}/.claude.json:${CONTAINER_HOME}/.claude.json" \
     --bind "${WORKSPACE}:/workspace" \
     "${EXTRA_BIND_ARGS[@]}" \
     --workdir /workspace \
