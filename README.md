@@ -2,6 +2,29 @@
 
 Container wrappers for agentic coding tools that sandbox execution to the selected workspace directory.
 
+## Features
+
+<details>
+<summary><strong>Isolate coding agents from sensitive files</strong></summary>
+
+Each agent runs inside a container with access limited to the current project directory, mounted as `/workspace`. Host credential files (SSH keys, API tokens, cloud configs) are never mounted into the container — they are copied once into an isolated per-workspace state directory on first run and never written back to the host. The container HOME is fully isolated, preventing any host configuration from leaking in.
+
+</details>
+
+<details>
+<summary><strong>Allow selected SSH connections without sharing keys with the agent</strong></summary>
+
+Contagent can forward SSH authentication into the container without ever exposing your private keys. An isolated per-workspace `ssh-agent` is started on the host, loaded only with the keys you explicitly approve via `contagent ssh add`. The container receives the agent socket — not the keys themselves. The corresponding public keys are copied into the container's `~/.ssh/` so `IdentitiesOnly` works correctly with agent forwarding. Selected `Host` blocks from your `~/.ssh/config` are injected into the container so SSH aliases work transparently inside.
+
+</details>
+
+<details>
+<summary><strong>Load preferred modules from the CVMFS software stack</strong></summary>
+
+For CVMFS-enabled clusters (e.g. DRAC/Alliance), contagent tracks which lmod modules are loaded in your shell and makes them available inside the container. On first run, the current module list is saved to `.contagent/<variant>/modules`. On subsequent runs, if the loaded modules differ from the saved list, you are prompted to reconcile — keeping your container environment consistent across sessions without manual intervention.
+
+</details>
+
 ## Supported tools
 - Claude Code
 - Cursor CLI
