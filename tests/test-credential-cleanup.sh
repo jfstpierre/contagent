@@ -123,7 +123,7 @@ echo "=== applaude credential handling ==="
 
 describe \
   "applaude copies real credentials to CONTAGENT_DIR (outside workspace)." \
-  "The workspace-side credential files are zeroed stubs — never contain real tokens." \
+  "The workspace-side stubs contain credential content as --bind targets." \
   "CVMFS variant omitted: shared library handles credentials identically for both."
 
 run_apptainer_wrapper "applaude" "apptainer.sif"
@@ -131,13 +131,9 @@ STUB1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude/.credentials.json"
 STUB2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude.json"
 CRED_DIR="${SETUP_TMPDIR}/contagentdir/claude/creds"
 
-[ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
-  && ok "applaude: .credentials.json stub in workspace is empty" \
-  || fail "applaude: .credentials.json stub in workspace is empty" "file missing or non-empty"
+assert_eq "$(cat "${STUB1}" 2>/dev/null)" '{"fake":"credentials"}' "applaude: .credentials.json stub in workspace has credential content"
 
-[ -f "${STUB2}" ] && [ ! -s "${STUB2}" ] \
-  && ok "applaude: .claude.json stub in workspace is empty" \
-  || fail "applaude: .claude.json stub in workspace is empty" "file missing or non-empty"
+assert_eq "$(cat "${STUB2}" 2>/dev/null)" '{"fake":"config"}' "applaude: .claude.json stub in workspace has credential content"
 
 [ -f "${CRED_DIR}/.credentials.json" ] \
   && ok "applaude: .credentials.json copied to CONTAGENT_DIR" \
@@ -153,16 +149,14 @@ echo "=== appopen credential handling ==="
 
 describe \
   "appopen copies OpenCode auth to CONTAGENT_DIR (outside workspace)." \
-  "The workspace-side auth.json stub is zeroed — never contains real tokens." \
+  "The workspace-side auth.json stub contains credential content as a --bind target." \
   "CVMFS variant omitted: shared library handles credentials identically for both."
 
 run_apptainer_wrapper "appopen" "apptainer.sif"
 STUB1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.local/share/opencode/auth.json"
 CRED_DIR="${SETUP_TMPDIR}/contagentdir/opencode/creds"
 
-[ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
-  && ok "appopen: auth.json stub in workspace is empty" \
-  || fail "appopen: auth.json stub in workspace is empty" "file missing or non-empty"
+assert_eq "$(cat "${STUB1}" 2>/dev/null)" '{"fake":"opencode_auth"}' "appopen: auth.json stub in workspace has credential content"
 
 [ -f "${CRED_DIR}/auth.json" ] \
   && ok "appopen: auth.json copied to CONTAGENT_DIR" \
@@ -177,7 +171,7 @@ echo "=== appsur credential handling ==="
 
 describe \
   "appsur copies Cursor credentials to CONTAGENT_DIR (outside workspace)." \
-  "The workspace-side auth.json and cli-config.json stubs are zeroed." \
+  "The workspace-side stubs contain credential content as --bind targets." \
   "CVMFS variant omitted: shared library handles credentials identically for both."
 
 run_apptainer_wrapper "appsur" "apptainer.sif"
@@ -185,13 +179,9 @@ STUB1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.config/cursor/auth.json"
 STUB2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.cursor/cli-config.json"
 CRED_DIR="${SETUP_TMPDIR}/contagentdir/cursor/creds"
 
-[ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
-  && ok "appsur: auth.json stub in workspace is empty" \
-  || fail "appsur: auth.json stub in workspace is empty" "file missing or non-empty"
+assert_eq "$(cat "${STUB1}" 2>/dev/null)" '{"fake":"cursor_auth"}' "appsur: auth.json stub in workspace has credential content"
 
-[ -f "${STUB2}" ] && [ ! -s "${STUB2}" ] \
-  && ok "appsur: cli-config.json stub in workspace is empty" \
-  || fail "appsur: cli-config.json stub in workspace is empty" "file missing or non-empty"
+assert_eq "$(cat "${STUB2}" 2>/dev/null)" '{"fake":"cursor_cli"}' "appsur: cli-config.json stub in workspace has credential content"
 
 [ -f "${CRED_DIR}/auth.json" ] \
   && ok "appsur: auth.json copied to CONTAGENT_DIR" \

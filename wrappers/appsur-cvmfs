@@ -78,8 +78,8 @@ cp "${HOST_CURSOR_CONFIG}" "${CRED_DIR}/cli-config.json"
 chmod 600 "${CRED_DIR}/cli-config.json"
 
 # Empty stubs ensure the bind targets exist as files (not directories).
-: > "${CONTAINER_HOME}/.config/cursor/auth.json"
-: > "${CONTAINER_HOME}/.cursor/cli-config.json"
+cp "${CRED_DIR}/auth.json" "${CONTAINER_HOME}/.config/cursor/auth.json"
+cp "${CRED_DIR}/cli-config.json" "${CONTAINER_HOME}/.cursor/cli-config.json"
 
 trap 'contagent_ssh_agent_cleanup' EXIT
 trap 'exit 130' INT

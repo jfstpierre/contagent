@@ -82,7 +82,7 @@ if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ]; then
 fi
 
 # Empty stubs ensure the bind targets exist as files (not directories).
-: > "${CONTAINER_HOME}/.local/share/opencode/auth.json"
+cp "${CRED_DIR}/auth.json" "${CONTAINER_HOME}/.local/share/opencode/auth.json"
 
 # Inject context.md into the OpenCode config
 generate_context_file "${WORKSPACE}" "apptainer-cvmfs" "${VARIANT_DIR}/modules"
@@ -90,7 +90,7 @@ generate_opencode_config "${CRED_DIR}" "${WORKSPACE}"
 
 # Stub for opencode.json config if it was generated into CRED_DIR
 if [ -f "${CRED_DIR}/opencode.json" ]; then
-  : > "${CONTAINER_HOME}/.config/opencode/opencode.json"
+  cp "${CRED_DIR}/opencode.json" "${CONTAINER_HOME}/.config/opencode/opencode.json"
 fi
 
 trap 'contagent_ssh_agent_cleanup' EXIT

@@ -80,8 +80,8 @@ cp "${HOST_CLAUDE_JSON}" "${CRED_DIR}/.claude.json"
 chmod 600 "${CRED_DIR}/.claude.json"
 
 # Empty stubs ensure the bind targets exist as files (not directories).
-: > "${CONTAINER_HOME}/.claude/.credentials.json"
-: > "${CONTAINER_HOME}/.claude.json"
+cp "${CRED_DIR}/.credentials.json" "${CONTAINER_HOME}/.claude/.credentials.json"
+cp "${CRED_DIR}/.claude.json" "${CONTAINER_HOME}/.claude.json"
 
 trap 'contagent_ssh_agent_cleanup' EXIT
 trap 'exit 130' INT
