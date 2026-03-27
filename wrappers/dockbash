@@ -12,8 +12,8 @@ CONTAINER_NAME="dockbash-$$"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-DOCKBASH_DIR="${WORKSPACE}/.contagent/dockbash"
-CONTAINER_HOME="${DOCKBASH_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/docker"
+CONTAINER_HOME="${VARIANT_DIR}/home"
 
 # Create per-workspace home directory structure
 mkdir -p "${CONTAINER_HOME}"

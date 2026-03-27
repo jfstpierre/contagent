@@ -120,24 +120,24 @@ describe \
   "Lists each module from the file and includes the file path in the section."
 
 # Modules section: present when modules_file given
-mkdir -p "${tmpdir}/ws4/.contagent/applaude"
+mkdir -p "${tmpdir}/ws4/.contagent/apptainer"
 touch "${tmpdir}/ws4/.contagent/mounts"
-cat > "${tmpdir}/ws4/.contagent/applaude/modules" << EOF
+cat > "${tmpdir}/ws4/.contagent/apptainer/modules" << EOF
 python/3.11
 scipy-stack/2023b
 EOF
 
 (
   source "${_LIB_}"
-  generate_context_file "${tmpdir}/ws4" "applaude-cvmfs" \
-    "${tmpdir}/ws4/.contagent/applaude/modules"
+  generate_context_file "${tmpdir}/ws4" "apptainer-cvmfs" \
+    "${tmpdir}/ws4/.contagent/apptainer/modules"
 ) >/dev/null 2>&1
 
 CONTENT4="$(cat "${tmpdir}/ws4/.contagent/context.md" 2>/dev/null)"
 assert_contains "$CONTENT4" "Loaded modules" "modules section present when modules_file given"
 assert_contains "$CONTENT4" "python/3.11" "modules section lists first module"
 assert_contains "$CONTENT4" "scipy-stack/2023b" "modules section lists second module"
-assert_contains "$CONTENT4" ".contagent/applaude/modules" "modules section shows file path"
+assert_contains "$CONTENT4" ".contagent/apptainer/modules" "modules section shows file path"
 
 describe \
   "generate_context_file overwrites the file on every run." \

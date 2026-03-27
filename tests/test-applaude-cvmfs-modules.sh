@@ -69,9 +69,9 @@ run_test() {
   local workspace="${tmpdir}/workspace"
   local module_log="${tmpdir}/module.log"
 
-  mkdir -p "${workspace}/.contagent/applaude"
+  mkdir -p "${workspace}/.contagent/apptainer"
 
-  local modules_file="${workspace}/.contagent/applaude/modules"
+  local modules_file="${workspace}/.contagent/apptainer/modules"
 
   # Write initial modules file if provided
   [ -n "$file_content" ] && printf '%s' "$file_content" >"${modules_file}"

@@ -11,8 +11,19 @@ SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer-cvmfs.sif"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-APPBASH_DIR="${WORKSPACE}/.contagent/appbash"
-CONTAINER_HOME="${APPBASH_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/apptainer"
+CONTAINER_HOME="${VARIANT_DIR}/home"
+
+# Migrate from old per-tool directory to shared apptainer directory.
+if [ ! -d "${CONTAINER_HOME}" ]; then
+    for _old in applaude appbash appopen appsur; do
+        if [ -d "${WORKSPACE}/.contagent/${_old}/home" ]; then
+            mkdir -p "${VARIANT_DIR}"
+            mv "${WORKSPACE}/.contagent/${_old}/home" "${CONTAINER_HOME}"
+            break
+        fi
+    done
+fi
 
 if [ ! -f "${SIF_IMAGE}" ]; then
   echo "Error: SIF not found: ${SIF_IMAGE}"

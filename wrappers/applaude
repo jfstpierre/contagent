@@ -14,8 +14,19 @@ SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer.sif"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-APPLAUDE_DIR="${WORKSPACE}/.contagent/applaude"
-CONTAINER_HOME="${APPLAUDE_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/apptainer"
+CONTAINER_HOME="${VARIANT_DIR}/home"
+
+# Migrate from old per-tool directory to shared apptainer directory.
+if [ ! -d "${CONTAINER_HOME}" ]; then
+    for _old in applaude appbash appopen appsur; do
+        if [ -d "${WORKSPACE}/.contagent/${_old}/home" ]; then
+            mkdir -p "${VARIANT_DIR}"
+            mv "${WORKSPACE}/.contagent/${_old}/home" "${CONTAINER_HOME}"
+            break
+        fi
+    done
+fi
 
 # Host Claude directory (for credentials/settings)
 HOST_CLAUDE_DIR="${HOME}/.claude"
@@ -82,7 +93,7 @@ parse_mounts_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
 forward_ssh_agent_apptainer "${WORKSPACE}" EXTRA_BIND_ARGS
 
 # Generate container context file and install Claude skills
-generate_context_file "${WORKSPACE}" "applaude"
+generate_context_file "${WORKSPACE}" "apptainer"
 install_claude_skills "${CONTAINER_HOME}"
 
 # Ensure claude's install dir is on PATH inside the container.

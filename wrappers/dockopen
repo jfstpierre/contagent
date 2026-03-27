@@ -16,8 +16,8 @@ CONTAINER_NAME="dockopen-$$"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-DOCKOPEN_DIR="${WORKSPACE}/.contagent/dockopen"
-CONTAINER_HOME="${DOCKOPEN_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/docker"
+CONTAINER_HOME="${VARIANT_DIR}/home"
 
 # Host OpenCode directories (for credentials/settings)
 HOST_OPENCODE_AUTH="${HOME}/.local/share/opencode/auth.json"
@@ -71,7 +71,7 @@ forward_ssh_agent_docker "${WORKSPACE}" EXTRA_BIND_ARGS
 trap 'contagent_ssh_agent_cleanup' EXIT
 
 # Generate container context file and inject into OpenCode config
-generate_context_file "${WORKSPACE}" "dockopen"
+generate_context_file "${WORKSPACE}" "docker"
 generate_opencode_config "${CRED_DIR}" "${WORKSPACE}"
 
 # Run opencode with:

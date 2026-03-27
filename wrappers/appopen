@@ -14,8 +14,19 @@ SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer.sif"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-APPOPEN_DIR="${WORKSPACE}/.contagent/appopen"
-CONTAINER_HOME="${APPOPEN_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/apptainer"
+CONTAINER_HOME="${VARIANT_DIR}/home"
+
+# Migrate from old per-tool directory to shared apptainer directory.
+if [ ! -d "${CONTAINER_HOME}" ]; then
+    for _old in applaude appbash appopen appsur; do
+        if [ -d "${WORKSPACE}/.contagent/${_old}/home" ]; then
+            mkdir -p "${VARIANT_DIR}"
+            mv "${WORKSPACE}/.contagent/${_old}/home" "${CONTAINER_HOME}"
+            break
+        fi
+    done
+fi
 
 # Host OpenCode directories (for credentials/settings)
 HOST_OPENCODE_AUTH="${HOME}/.local/share/opencode/auth.json"
@@ -63,7 +74,7 @@ if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ]; then
 fi
 
 # Inject context.md into the OpenCode config
-generate_context_file "${WORKSPACE}" "appopen"
+generate_context_file "${WORKSPACE}" "apptainer"
 generate_opencode_config "${MERGED_HOME}" "${WORKSPACE}"
 
 _contagent_cleanup() {

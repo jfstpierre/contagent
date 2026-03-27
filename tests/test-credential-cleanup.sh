@@ -127,8 +127,8 @@ describe \
   "CVMFS variant omitted: shared library handles cleanup identically for both."
 
 run_apptainer_wrapper "applaude" "apptainer.sif"
-CRED1="${SETUP_WORKSPACE}/.contagent/applaude/home/.claude/.credentials.json"
-CRED2="${SETUP_WORKSPACE}/.contagent/applaude/home/.claude.json"
+CRED1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude/.credentials.json"
+CRED2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.claude.json"
 RUNTIME="${SETUP_TMPDIR}/contagentdir/runtime"
 
 [ ! -f "${CRED1}" ] \
@@ -155,7 +155,7 @@ describe \
   "CVMFS variant omitted: shared library handles cleanup identically for both."
 
 run_apptainer_wrapper "appopen" "apptainer.sif"
-CRED1="${SETUP_WORKSPACE}/.contagent/appopen/home/.local/share/opencode/auth.json"
+CRED1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.local/share/opencode/auth.json"
 RUNTIME="${SETUP_TMPDIR}/contagentdir/runtime"
 
 [ ! -f "${CRED1}" ] \
@@ -177,8 +177,8 @@ describe \
   "CVMFS variant omitted: shared library handles cleanup identically for both."
 
 run_apptainer_wrapper "appsur" "apptainer.sif"
-CRED1="${SETUP_WORKSPACE}/.contagent/appsur/home/.config/cursor/auth.json"
-CRED2="${SETUP_WORKSPACE}/.contagent/appsur/home/.cursor/cli-config.json"
+CRED1="${SETUP_WORKSPACE}/.contagent/apptainer/home/.config/cursor/auth.json"
+CRED2="${SETUP_WORKSPACE}/.contagent/apptainer/home/.cursor/cli-config.json"
 RUNTIME="${SETUP_TMPDIR}/contagentdir/runtime"
 
 [ ! -f "${CRED1}" ] \
@@ -204,8 +204,8 @@ describe \
   "Confirms credentials are isolated from the shareable workspace directory."
 
 run_docker_wrapper "docklaude"
-STUB1="${SETUP_WORKSPACE}/.contagent/docklaude/home/.claude/.credentials.json"
-STUB2="${SETUP_WORKSPACE}/.contagent/docklaude/home/.claude.json"
+STUB1="${SETUP_WORKSPACE}/.contagent/docker/home/.claude/.credentials.json"
+STUB2="${SETUP_WORKSPACE}/.contagent/docker/home/.claude.json"
 CRED_DIR="${SETUP_TMPDIR}/contagentdir/claude/creds"
 
 [ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
@@ -230,7 +230,7 @@ describe \
   "The workspace-side auth.json stub is zeroed — never contains real tokens."
 
 run_docker_wrapper "dockopen"
-STUB1="${SETUP_WORKSPACE}/.contagent/dockopen/home/.local/share/opencode/auth.json"
+STUB1="${SETUP_WORKSPACE}/.contagent/docker/home/.local/share/opencode/auth.json"
 CRED_DIR="${SETUP_TMPDIR}/contagentdir/opencode/creds"
 
 [ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \
@@ -251,8 +251,8 @@ describe \
   "The workspace-side auth.json and cli-config.json stubs are zeroed."
 
 run_docker_wrapper "docksur"
-STUB1="${SETUP_WORKSPACE}/.contagent/docksur/home/.config/cursor/auth.json"
-STUB2="${SETUP_WORKSPACE}/.contagent/docksur/home/.cursor/cli-config.json"
+STUB1="${SETUP_WORKSPACE}/.contagent/docker/home/.config/cursor/auth.json"
+STUB2="${SETUP_WORKSPACE}/.contagent/docker/home/.cursor/cli-config.json"
 CRED_DIR="${SETUP_TMPDIR}/contagentdir/cursor/creds"
 
 [ -f "${STUB1}" ] && [ ! -s "${STUB1}" ] \

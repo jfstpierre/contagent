@@ -16,8 +16,30 @@ SIF_IMAGE="${CONTAGENT_DIR:-${HOME}/.contagent}/apptainer-cvmfs.sif"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-APPOPEN_DIR="${WORKSPACE}/.contagent/appopen"
-CONTAINER_HOME="${APPOPEN_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/apptainer"
+CONTAINER_HOME="${VARIANT_DIR}/home"
+
+# Migrate from old per-tool directory to shared apptainer directory.
+if [ ! -d "${CONTAINER_HOME}" ]; then
+    for _old in applaude appbash appopen appsur; do
+        if [ -d "${WORKSPACE}/.contagent/${_old}/home" ]; then
+            mkdir -p "${VARIANT_DIR}"
+            mv "${WORKSPACE}/.contagent/${_old}/home" "${CONTAINER_HOME}"
+            break
+        fi
+    done
+fi
+
+# Migrate old modules file to shared location.
+if [ ! -f "${VARIANT_DIR}/modules" ]; then
+    for _old in applaude appopen appsur appbash; do
+        if [ -f "${WORKSPACE}/.contagent/${_old}/modules" ]; then
+            mkdir -p "${VARIANT_DIR}"
+            mv "${WORKSPACE}/.contagent/${_old}/modules" "${VARIANT_DIR}/modules"
+            break
+        fi
+    done
+fi
 
 # Host OpenCode directories (for credentials/settings)
 HOST_OPENCODE_AUTH="${HOME}/.local/share/opencode/auth.json"
@@ -65,7 +87,7 @@ if [ -f "${HOST_OPENCODE_CONFIG}/opencode.json" ]; then
 fi
 
 # Inject context.md into the OpenCode config
-generate_context_file "${WORKSPACE}" "appopen-cvmfs" "${APPOPEN_DIR}/modules"
+generate_context_file "${WORKSPACE}" "apptainer-cvmfs" "${VARIANT_DIR}/modules"
 generate_opencode_config "${MERGED_HOME}" "${WORKSPACE}"
 
 _contagent_cleanup() {
@@ -80,7 +102,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Reconcile loaded modules against saved list
-reconcile_cvmfs_modules "${APPOPEN_DIR}/modules"
+reconcile_cvmfs_modules "${VARIANT_DIR}/modules"
 
 # Load the Apptainer module recorded by contagent, if any
 load_apptainer_module

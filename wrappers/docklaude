@@ -16,8 +16,8 @@ CONTAINER_NAME="docklaude-$$"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-DOCKLAUDE_DIR="${WORKSPACE}/.contagent/docklaude"
-CONTAINER_HOME="${DOCKLAUDE_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/docker"
+CONTAINER_HOME="${VARIANT_DIR}/home"
 
 # Host Claude directory (for credentials/settings)
 HOST_CLAUDE_DIR="${HOME}/.claude"
@@ -39,9 +39,20 @@ fi
 
 # Migrate old structure (.contagent/docklaude/.claude/ → home/.claude/) if needed.
 # The old layout mounted .claude/ directly; the new layout mounts a full home dir.
-if [ -d "${DOCKLAUDE_DIR}/.claude" ] && [ ! -d "${CONTAINER_HOME}/.claude" ]; then
+if [ -d "${VARIANT_DIR}/.claude" ] && [ ! -d "${CONTAINER_HOME}/.claude" ]; then
     mkdir -p "${CONTAINER_HOME}"
-    mv "${DOCKLAUDE_DIR}/.claude" "${CONTAINER_HOME}/.claude"
+    mv "${VARIANT_DIR}/.claude" "${CONTAINER_HOME}/.claude"
+fi
+
+# Migrate from old per-tool directory to shared docker directory.
+if [ ! -d "${CONTAINER_HOME}" ]; then
+    for _old in docklaude dockbash dockopen docksur; do
+        if [ -d "${WORKSPACE}/.contagent/${_old}/home" ]; then
+            mkdir -p "${VARIANT_DIR}"
+            mv "${WORKSPACE}/.contagent/${_old}/home" "${CONTAINER_HOME}"
+            break
+        fi
+    done
 fi
 
 # Credentials live in ~/.contagent (private, never in the shareable workspace).
@@ -77,7 +88,7 @@ forward_ssh_agent_docker "${WORKSPACE}" EXTRA_BIND_ARGS
 trap 'contagent_ssh_agent_cleanup' EXIT
 
 # Generate container context file and install Claude skills
-generate_context_file "${WORKSPACE}" "docklaude"
+generate_context_file "${WORKSPACE}" "docker"
 install_claude_skills "${CONTAINER_HOME}"
 
 # Run the container with:

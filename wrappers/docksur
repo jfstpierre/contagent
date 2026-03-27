@@ -16,8 +16,8 @@ CONTAINER_NAME="docksur-$$"
 
 # Get absolute path of workspace (current directory)
 WORKSPACE="$(pwd)"
-DOCKSUR_DIR="${WORKSPACE}/.contagent/docksur"
-CONTAINER_HOME="${DOCKSUR_DIR}/home"
+VARIANT_DIR="${WORKSPACE}/.contagent/docker"
+CONTAINER_HOME="${VARIANT_DIR}/home"
 
 # Host Cursor directories (for credentials/settings)
 HOST_CURSOR_AUTH="${HOME}/.config/cursor/auth.json"
@@ -68,7 +68,7 @@ forward_ssh_agent_docker "${WORKSPACE}" EXTRA_BIND_ARGS
 trap 'contagent_ssh_agent_cleanup' EXIT
 
 # Generate container context file and install Cursor rules
-generate_context_file "${WORKSPACE}" "docksur"
+generate_context_file "${WORKSPACE}" "docker"
 install_cursor_rules "${WORKSPACE}" "${WORKSPACE}/.contagent/context.md"
 
 # Run cursor-agent with:
