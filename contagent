@@ -51,9 +51,14 @@ check_workspace_dir() {
   if [ ! -d "$(pwd)/.contagent" ]; then
     echo "Error: no .contagent/ directory found in $(pwd)."
     echo "This command must be run from a contagent workspace directory."
-    echo "Run 'contagent build' from the workspace first to initialise it."
+    echo "Run 'contagent ssh add' or 'contagent mount add' to initialise it."
     exit 1
   fi
+}
+
+# Ensure the local .contagent/ directory exists (creates it if missing).
+ensure_workspace_dir() {
+  mkdir -p "$(pwd)/.contagent"
 }
 
 # Warn when running from HOME (sandboxing defeat)
@@ -272,7 +277,7 @@ case "${1:-}" in
     case "${2:-}" in
       add)
         check_home_dir
-        check_workspace_dir
+        ensure_workspace_dir
         prompt_ssh_host_selection "$(pwd)"
         ;;
       list)
@@ -298,7 +303,7 @@ case "${1:-}" in
     case "${2:-}" in
       add)
         check_home_dir
-        check_workspace_dir
+        ensure_workspace_dir
         add_mount "$(pwd)"
         ;;
       list)

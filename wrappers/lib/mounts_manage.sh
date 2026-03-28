@@ -52,6 +52,8 @@ add_mount() {
 
   echo ""
   echo "Add a mount for: ${workspace}"
+  echo "  Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)"
+  echo "  Example: ~/bin:/workspace/bin:ro"
   echo ""
 
   local host_path container_path mode _expanded
@@ -71,7 +73,7 @@ add_mount() {
     break
   done
 
-  read -r -p "Container path (absolute, e.g. /data): " container_path
+  read -r -p "Container path (absolute, e.g. /datasets): " container_path
   if [ -z "${container_path}" ]; then
     echo "Aborted."
     echo ""

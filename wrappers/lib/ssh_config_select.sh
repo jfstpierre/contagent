@@ -298,7 +298,7 @@ prompt_ssh_host_selection() {
         "$(( _nhosts + _i + 2 ))" "${_aliases}" "${_idfile:-(none)}" "${_sel_mark}"
     done
 
-    echo "  $(( _nhosts + _ncatchall + 2 ))) Done / Skip"
+    echo "  (press Enter to finish)"
     echo ""
 
     local _choice
@@ -312,8 +312,6 @@ prompt_ssh_host_selection() {
       echo "Saved: SSH agent will be forwarded as-is (default key mode)."
       echo ""
       return 0
-    elif [ "${_choice}" = "$(( _nhosts + _ncatchall + 2 ))" ]; then
-      _done=1
     elif [[ "${_choice}" =~ ^[0-9]+$ ]] && \
          [ "${_choice}" -ge 2 ] && \
          [ "${_choice}" -le "$(( _nhosts + _ncatchall + 1 ))" ]; then
@@ -332,7 +330,7 @@ prompt_ssh_host_selection() {
       fi
       _selected=("${_new_selected[@]+"${_new_selected[@]}"}")
     else
-      echo "Invalid choice. Please enter a number from the list."
+      _done=1
     fi
     echo ""
   done

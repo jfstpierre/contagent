@@ -55,15 +55,12 @@ init_mounts_file() {
 # Lines starting with # are comments and are ignored.
 #
 # Examples:
-#   /data/shared:/data:ro
-#   ~/models:/models:ro
-#   /scratch/myproject:/scratch:rw
+#   ~/bin:/workspace/bin:ro
+#   ~/.config/gcloud:/home/agent/.config/gcloud:ro
+#   /scratch/output:/output:rw
 MOUNTS_TEMPLATE
     echo "Note: .contagent/mounts created."
-    echo "  Add extra bind mounts for the container by editing:"
-    echo "    ${mounts_file}"
-    echo "  Format: host_path:container_path[:mode]  (mode: ro or rw, default: ro)"
-    echo "  Example: /data/shared:/data:ro"
+    echo "  Edit directly: ${mounts_file}"
     echo ""
   fi
 }
